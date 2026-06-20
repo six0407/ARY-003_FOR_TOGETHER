@@ -3,6 +3,36 @@
 ## 2026-06-15
 - 已读取 `race3/ary-grs-003-yunf161` 的根目录文档：`README.md`、`STATUS.md`、`PLAN.md`。
 - 当前判断：仓库以文档与高保真原型为主，尚未进入应用代码与架构实现阶段。
+
+## 2026-06-20 — DEV-3 第一阶段实现
+
+### 背景
+基于 `AgentDocs/devTask/dev3-design.md` 实现 DEV-3 核心框架。当前仓库已从 `ary-grs-003-DiSod` 迁徙到独立仓库 `ARY-003_FOR_TOGETHER`，5 人团队开始协作开发。
+
+### 后端新增
+| 文件 | 变更 | 说明 |
+| --- | --- | --- |
+| `project/src/app.js` | 新增 3 个 API | `GET /api/users/me`、`PUT /api/auth/users/:id/roles`、`/console` 和 `/admin` 路由 |
+
+### 前端新增
+| 文件 | 说明 | 状态 |
+| --- | --- | --- |
+| `project/public/console.html` | Console SPA：Home + Organizer/Rider/Judge 三视图框架 | ✅ 可访问 `/console` |
+| `project/public/admin.html` | Admin Console：用户表格 + 角色编辑弹窗 | ✅ 可访问 `/admin` |
+
+### 验证结果
+- ✅ Console 页面加载正常，登录弹窗展示 3 个 Demo 用户
+- ✅ 登录后 Header 显示用户名 + 角色标签，侧边栏按 role 展示关联赛事
+- ✅ Console Home 按 role 分区展示（Organizer 看到 3 场赛事）
+- ✅ Admin Console 表格展示 3 个用户，角色 pill 和资料状态正常
+- ✅ 角色编辑弹窗可选/取消 4 个角色，调用 API 保存
+- ✅ Organizer/Rider/Judge 工作台框架正常切换
+- ✅ `npm test` 46 条全部通过
+
+### 下一轮
+- Rider View 接入 CA 和作品提交功能
+- Organizer View 增强（创建赛事表单）
+- Judge View 评审流程（待 DEV-4 API）
 - 当前建议：优先评审 `UX-1` 高保真原型，并复审 `PRD-TEMP-1` 的文档一致性，再决定是否进入 `DEV-1`。
 - 已为用户梳理推荐阅读顺序：先看 `STATUS.md` / `PLAN.md` 建立全局，再读 `docs/ary-mvp.prd.md`、`docs/registration-ca-rules-alignment.taskbook.md`、`docs/ary-mvp.ia.md`、`docs/ux-hifi.taskbook.md` 与 `design-prototype/`，最后根据目标补读领域、权限、QA、OPS 和 CA 契约文档。
 - 已基于 `docs/registration-ca-rules-alignment.taskbook.md` 总结当前阶段待办：复审 PRD-TEMP-1 是否可并入正式基线、检查原型和文档是否仍残留旧 CA 资格门禁口径，并在 UX-1 评审通过前暂缓进入 `DEV-1`。

@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin Console — ARY</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <style>
+    .admin-shell { position:absolute;inset:0;display:flex;flex-direction:column;background:#f8fafc; }
+    .admin-header { display:flex;align-items:center;justify-content:space-between;padding:8px 24px;background:#fff;border-bottom:1px solid var(--line); }
+    .admin-header .brand { display:flex;align-items:center;gap:10px;text-decoration:none; }
+    .admin-header .brand img { height:28px; }
+    .admin-header .brand strong { font-size:16px;color:var(--blue-950);font-weight:950; }
+    .admin-body { flex:1;padding:24px 32px;overflow-y:auto; }
+    .admin-body h1 { font-size:28px;font-weight:950;color:var(--blue-950);margin-bottom:4px; }
+    .admin-body .subtitle { color:var(--muted);font-size:14px;margin-bottom:20px; }
+    .admin-body .back-link { color:var(--blue-700);font-size:13px;font-weight:700;text-decoration:none;display:inline-block;margin-bottom:16px; }
+
+    .admin-table { width:100%;border-collapse:collapse;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.04); }
+    .admin-table th { text-align:left;padding:12px 16px;font-size:12px;font-weight:950;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;background:#f9fafb;border-bottom:1px solid var(--line); }
+    .admin-table td { padding:12px 16px;font-size:14px;color:var(--blue-950);border-bottom:1px solid rgba(0,0,0,0.04); }
+    .admin-table tr:last-child td { border-bottom:none; }
+    .admin-table tr:hover td { background:rgba(234,243,255,0.3); }
+
+    .role-pill { display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:900;margin:1px 2px; }
+    .role-pill.rider { background:#d1fae5;color:#065f46; }
+    .role-pill.judge { background:#fef3c7;color:#92400e; }
+    .role-pill.organizer { background:#eaf3ff;color:var(--blue-700); }
+    .role-pill.admin { background:#f3e8ff;color:#6b21a8; }
+
+    .admin-actions { display:flex;gap:4px; }
+    .admin-actions button { min-height:28px;padding:0 10px;border:1px solid var(--line);border-radius:6px;background:var(--glass);color:var(--blue-700);font-size:11px;font-weight:900;cursor:pointer; }
+    .admin-actions button:hover { background:rgba(34,107,230,0.08); }
+
+    /* Role Editor Modal */
+    .role-editor-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.4);backdrop-filter:blur(4px);z-index:100;display:flex;align-items:center;justify-content:center; }
+    .role-editor-modal { background:#fff;border-radius:20px;padding:28px 32px;max-width:400px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.2); }
+    .role-editor-modal h2 { font-size:22px;font-weight:950;color:var(--blue-950);margin-bottom:4px; }
+    .role-editor-modal .sub { color:var(--muted);font-size:13px;margin-bottom:16px; }
+    .role-checkbox { display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(0,0,0,0.04); }
+    .role-checkbox:last-child { border-bottom:none; }
+    .role-checkbox label { font-size:15px;font-weight:700;color:var(--blue-900);cursor:pointer; }
+    .role-checkbox input[type="checkbox"] { width:18px;height:18px;cursor:pointer; }
+    .role-editor-actions { display:flex;gap:8px;margin-top:16px;justify-content:flex-end; }
+    .role-editor-actions button { min-height:36px;padding:0 20px;border-radius:10px;font-size:14px;font-weight:900;cursor:pointer; }
+    .role-editor-actions .save { color:#fff;background:linear-gradient(135deg,var(--blue-800),var(--blue-500));border:none; }
+    .role-editor-actions .cancel { border:1px solid var(--line);background:var(--glass);color:var(--blue-700); }
+
+    .status-badge { display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:900; }
+    .status-badge.complete { background:#d1fae5;color:#065f46; }
+    .status-badge.incomplete { background:#fee2e2;color:#991b1b; }
+
+    .empty-state { text-align:center;padding:60px 20px;color:var(--muted);font-size:15px;line-height:1.6; }
+    .empty-state button { margin-top:12px;min-height:36px;padding:0 20px;border:1px solid var(--line);border-radius:10px;background:var(--glass);color:var(--blue-700);font-size:13px;font-weight:900;cursor:pointer; }
+    .empty-state button.primary { color:#fff;background:linear-gradient(135deg,var(--blue-800),var(--blue-500));border:none; }
+  </style>
+</head>
+<body>
+<div class="admin-shell">
+  <header class="admin-header">
+    <a class="brand" href="/admin">
+      <img src="./assets/logo-horse-compass-transparent.png" alt="" />
+      <span><strong>ARY</strong><small> Admin Console</small></span>
+    </a>
+    <div style="display:flex;gap:8px;align-items:center;" id="admin-user-area">
+      <span style="font-size:13px;color:var(--muted);">未登录</span>
+    </div>
+  </header>
+
+  <div class="admin-body">
+    <a class="back-link" href="/console">← 返回 Console</a>
+    <h1>账号与角色管理</h1>
+    <p class="subtitle">查看用户、管理角色、监控资料补全状态</p>
+
+    <div id="admin-content">
+      <div class="empty-state">加载中...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Role Editor Modal -->
+<div class="role-editor-overlay" id="role-editor-overlay" style="display:none;" onclick="if(event.target===this)closeRoleEditor()">
+  <div class="role-editor-modal" onclick="event.stopPropagation()">
+    <h2 id="role-editor-title">编辑角色</h2>
+    <p class="sub" id="role-editor-sub"></p>
+    <div id="role-editor-list"></div>
+    <div class="role-editor-actions">
+      <button class="cancel" onclick="closeRoleEditor()">取消</button>
+      <button class="save" onclick="saveRoles()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const App = { users: [], editingUser: null };
+
+async function init() {
+  try {
+    const res = await fetch('/api/auth/users');
+    App.users = await res.json();
+    renderTable();
+  } catch (e) {
+    document.getElementById('admin-content').innerHTML = `<div class="empty-state">加载失败: ${e.message}</div>`;
+  }
+}
+
+function renderTable() {
+  const container = document.getElementById('admin-content');
+  if (App.users.length === 0) {
+    container.innerHTML = '<div class="empty-state">暂无用户</div>';
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>GitHub ID</th>
+          <th>显示名</th>
+          <th>角色</th>
+          <th>资料状态</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${App.users.map(u => `
+          <tr>
+            <td style="font-weight:600;">${u.github_account_id}</td>
+            <td>${u.display_name}</td>
+            <td>${(u.roles || []).map(r => `<span class="role-pill ${r}">${r}</span>`).join('') || '<span style="color:var(--muted);font-size:12px;">无</span>'}</td>
+            <td><span class="status-badge ${u.profile_completion_status === 'complete' ? 'complete' : 'incomplete'}">${u.profile_completion_status === 'complete' ? '✅ 已完成' : '❌ 未完成'}</span></td>
+            <td><div class="admin-actions"><button onclick="openRoleEditor('${u.id}')">编辑角色</button></div></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    <p style="margin-top:12px;color:var(--muted);font-size:12px;">共 ${App.users.length} 个用户</p>
+  `;
+}
+
+function openRoleEditor(userId) {
+  const user = App.users.find(u => u.id === userId);
+  if (!user) return;
+  App.editingUser = user;
+
+  document.getElementById('role-editor-title').textContent = `编辑角色 — ${user.display_name}`;
+  document.getElementById('role-editor-sub').textContent = `GitHub: ${user.github_account_id}`;
+
+  const roles = user.roles || [];
+  const allRoles = [
+    { key: 'rider', label: '🏇 Rider 选手', desc: '可报名参赛、接入 CA、提交作品' },
+    { key: 'judge', label: '⚖️ Judge 评委', desc: '可查看分配作品、评分评语' },
+    { key: 'organizer', label: '📋 Organizer 主办方', desc: '可创建和管理赛事' },
+    { key: 'admin', label: '🔧 Admin 管理员', desc: '可管理系统用户和角色' },
+  ];
+
+  document.getElementById('role-editor-list').innerHTML = allRoles.map(r => `
+    <div class="role-checkbox">
+      <input type="checkbox" id="role-${r.key}" ${roles.includes(r.key) ? 'checked' : ''} />
+      <label for="role-${r.key}">${r.label}<br><small style="font-weight:400;color:var(--muted);font-size:12px;">${r.desc}</small></label>
+    </div>
+  `).join('');
+
+  document.getElementById('role-editor-overlay').style.display = 'flex';
+}
+
+function closeRoleEditor() {
+  document.getElementById('role-editor-overlay').style.display = 'none';
+  App.editingUser = null;
+}
+
+async function saveRoles() {
+  if (!App.editingUser) return;
+  const roles = ['rider','judge','organizer','admin'].filter(k => document.getElementById(`role-${k}`).checked);
+
+  try {
+    const res = await fetch(`/api/auth/users/${App.editingUser.id}/roles`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roles }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      closeRoleEditor();
+      // Refresh
+      const usersRes = await fetch('/api/auth/users');
+      App.users = await usersRes.json();
+      renderTable();
+    } else {
+      alert('保存失败: ' + (data.error || '未知错误'));
+    }
+  } catch (e) {
+    alert('请求失败: ' + e.message);
+  }
+}
+
+init();
+</script>
+</body>
+</html>

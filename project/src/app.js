@@ -18,6 +18,12 @@ app.use(express.json());
 // Root → home page (data-driven public gallery)
 app.get("/", (_req, res) => res.sendFile(path.join(publicDir, "home.html")));
 
+// Console → race management SPA
+app.get("/console", (_req, res) => res.sendFile(path.join(publicDir, "console.html")));
+
+// Admin → admin console
+app.get("/admin", (_req, res) => res.sendFile(path.join(publicDir, "admin.html")));
+
 // Static files (after explicit routes)
 app.use(express.static(publicDir));
 
@@ -40,6 +46,33 @@ app.post("/api/auth/login", (req, res) => {
 app.get("/api/auth/users", (_req, res) => {
   const users = all("SELECT * FROM users ORDER BY created_at DESC");
   res.json(users.map(parseUser));
+});
+
+// GET /api/users/me — current user detail (by demo token)
+app.get("/api/users/me", (req, res) => {
+  const token = req.headers.authorization?.replace("Bearer demo-token-", "");
+  if (!token) return res.status(401).json({ error: "未登录" });
+  const user = get("SELECT * FROM users WHERE id = ?", [token]);
+  if (!user) return res.status(404).json({ error: "用户不存在" });
+  res.json(parseUser(user));
+});
+
+// PUT /api/auth/users/:id/roles — update user roles (admin only)
+app.put("/api/auth/users/:id/roles", (req, res) => {
+  const { id } = req.params;
+  const { roles } = req.body;
+  if (!Array.isArray(roles)) return res.status(400).json({ error: "roles 必须是数组" });
+
+  const user = get("SELECT * FROM users WHERE id = ?", [id]);
+  if (!user) return res.status(404).json({ error: "用户不存在" });
+
+  const validRoles = ["rider", "judge", "organizer", "admin"];
+  const invalid = roles.filter((r) => !validRoles.includes(r));
+  if (invalid.length > 0) return res.status(400).json({ error: `无效角色: ${invalid.join(", ")}` });
+
+  update("users", id, { roles: JSON.stringify(roles), updated_at: now() });
+  save();
+  res.json({ ok: true, id, roles });
 });
 
 // ==================== Race Routes ====================
