@@ -95,6 +95,34 @@ app.get("/api/races", (_req, res) => {
   );
 });
 
+// POST /api/races — create a new race (organizer only)
+app.post("/api/races", (req, res) => {
+  const { title, slug, challengeBrief, status, organizerUserIds } = req.body;
+  if (!title) return res.status(400).json({ error: "title 必填" });
+
+  const id = uid();
+  const t = now();
+  const raceSlug = slug || `race-${id.slice(0, 8)}`;
+
+  // Check slug uniqueness
+  const existing = get("SELECT * FROM races WHERE slug = ?", [raceSlug]);
+  if (existing) return res.status(409).json({ error: `slug "${raceSlug}" 已存在` });
+
+  run(
+    `INSERT INTO races (id, slug, title, challenge_brief, status, time_windows, award_settings, organizer_user_ids, created_by_user_id, visibility, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id, raceSlug, title, challengeBrief || "", status || "draft",
+      JSON.stringify({}), JSON.stringify([]),
+      JSON.stringify(organizerUserIds || []),
+      organizerUserIds?.[0] || "system",
+      "public", t, t,
+    ],
+  );
+  save();
+  res.status(201).json({ id, slug: raceSlug, title, status: status || "draft" });
+});
+
 // GET /api/races/:slug — single race detail
 app.get("/api/races/:slug", (req, res) => {
   const race = get("SELECT * FROM races WHERE slug = ?", [req.params.slug]);

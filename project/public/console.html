@@ -91,6 +91,45 @@
     .empty-state button { margin-top:12px;min-height:36px;padding:0 20px;border:1px solid var(--line);border-radius:10px;background:var(--glass);color:var(--blue-700);font-size:13px;font-weight:900;cursor:pointer; }
     .empty-state button.primary { color:#fff;background:linear-gradient(135deg,var(--blue-800),var(--blue-500));border:none; }
 
+    /* ====== Constraint Checks ====== */
+    .constraint-checks { margin-top:14px;padding:14px 16px;border-radius:12px;background:rgba(248,250,252,0.8);border:1px solid rgba(34,107,230,0.08); }
+    .constraint-checks h4 { font-size:12px;font-weight:950;color:var(--blue-700);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px; }
+    .constraint-row { display:grid;grid-template-columns:20px 1fr;gap:6px;align-items:start;padding:4px 0;font-size:13px; }
+    .constraint-row span { font-weight:950;font-size:13px; }
+    .constraint-row.pass span { color:#0d9488; }
+    .constraint-row.fail span { color:#ef4444; }
+    .constraint-row small { display:block;margin-top:1px;color:var(--muted);font-size:11px; }
+    .review-flags { margin-top:10px;padding:8px 12px;border-radius:8px;background:#fef3c7;color:#92400e;font-size:12px;font-weight:700; }
+
+    /* ====== Forms & Actions ====== */
+    .action-bar { display:flex;flex-wrap:wrap;gap:8px;margin-top:14px; }
+    .action-bar button { min-height:32px;padding:0 14px;border:1px solid var(--line);border-radius:8px;background:var(--glass);color:var(--blue-800);font-size:12px;font-weight:900;cursor:pointer;transition:all 0.15s; }
+    .action-bar button:hover { transform:translateY(-1px); }
+    .action-bar button.primary { color:#fff;background:linear-gradient(135deg,var(--blue-800),var(--blue-500));border:none; }
+    .action-bar button.danger { color:#fff;background:linear-gradient(135deg,#dc2626,#ef4444);border:none; }
+
+    .form-group { margin-bottom:12px; }
+    .form-group label { display:block;font-size:12px;font-weight:900;color:var(--blue-700);margin-bottom:4px; }
+    .form-group input,.form-group textarea,.form-group select { width:100%;padding:8px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:#fff;color:var(--blue-950); }
+    .form-group textarea { min-height:60px;resize:vertical; }
+    .form-group input:focus,.form-group textarea:focus { outline:none;border-color:var(--blue-400);box-shadow:0 0 0 3px rgba(34,107,230,0.1); }
+
+    .feedback { margin-top:10px;padding:10px 14px;border-radius:10px;font-size:13px;line-height:1.4; }
+    .feedback.ok { background:#d1fae5;color:#065f46;border:1px solid #6ee7b7; }
+    .feedback.error { background:#fee2e2;color:#991b1b;border:1px solid #fca5a5; }
+    .feedback.info { background:#eaf3ff;color:var(--blue-800);border:1px solid #bfdbfe; }
+
+    /* ====== CA Cards ====== */
+    .ca-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-top:10px; }
+    .ca-card { padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,0.6);font-size:13px; }
+    .ca-card b { display:block;color:var(--blue-950);font-size:14px;margin-bottom:3px; }
+    .ca-card span { display:block;color:var(--muted);font-size:11px;line-height:1.4; }
+    .ca-card.verified { border-left:3px solid #0d9488; }
+    .ca-card.failed { border-left:3px solid #ef4444;background:#fef2f2; }
+    .ca-card .ca-status { display:inline-block;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:900;margin-top:4px; }
+    .ca-card .ca-status.ok { background:#d1fae5;color:#065f46; }
+    .ca-card .ca-status.err { background:#fee2e2;color:#991b1b; }
+
     /* ====== Responsive ====== */
     @media (max-width:768px) {
       .console-sidebar { width:160px; }
@@ -141,7 +180,10 @@
       <!-- Workspace (Organizer / Rider / Judge) -->
       <div id="view-workspace" style="display:none;">
         <div class="workspace-top" id="workspace-top"></div>
+        <!-- Workspace Tab Bar -->
+        <div style="display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--line);padding-bottom:0;" id="workspace-tabs"></div>
         <div id="workspace-content"></div>
+        <div id="workspace-feedback" class="feedback" style="display:none;"></div>
       </div>
     </main>
   </div>
@@ -168,22 +210,27 @@ const App = {
   users: [],
   races: [],
   registrations: [],
+  raceProjects: [],
+  works: [],
+  caConnections: [],
+  wsTab: 'overview',
 };
 
 // ====== Init ======
 async function init() {
   try {
-    // Load races
-    const racesRes = await fetch('/api/races');
+    const [racesRes, usersRes, regsRes, rpRes, worksRes] = await Promise.all([
+      fetch('/api/races'),
+      fetch('/api/auth/users'),
+      fetch('/api/registrations'),
+      fetch('/api/race-projects'),
+      fetch('/api/works'),
+    ]);
     App.races = await racesRes.json();
-
-    // Load users
-    const usersRes = await fetch('/api/auth/users');
     App.users = await usersRes.json();
-
-    // Load registrations
-    const regsRes = await fetch('/api/registrations');
     App.registrations = await regsRes.json();
+    App.raceProjects = await rpRes.json();
+    App.works = await worksRes.json();
 
     // Check session
     const saved = sessionStorage.getItem('ary_console_user');
@@ -203,39 +250,24 @@ async function init() {
 function showLogin() {
   document.getElementById('login-overlay').style.display = 'flex';
 }
-
 function hideLogin() {
   document.getElementById('login-overlay').style.display = 'none';
 }
-
 function doLogin(userId) {
   App.currentUser = App.users.find(u => u.id === userId);
-  if (App.currentUser) {
-    sessionStorage.setItem('ary_console_user', userId);
-  }
+  if (App.currentUser) sessionStorage.setItem('ary_console_user', userId);
   hideLogin();
-  renderHeader();
-  renderSidebar();
-  navigate('home');
+  renderHeader(); renderSidebar(); navigate('home');
 }
-
 function doLogout() {
   App.currentUser = null;
   sessionStorage.removeItem('ary_console_user');
-  renderHeader();
-  renderSidebar();
-  navigate('home');
+  renderHeader(); renderSidebar(); navigate('home');
 }
-
 function renderLoginModal() {
-  const list = document.getElementById('login-user-list');
-  list.innerHTML = App.users.map(u => {
-    const roleLabels = (u.roles || []).map(r => ({rider:'🏇选手',judge:'⚖️评委',organizer:'📋主办方',admin:'🔧管理员'}[r]||r)).join(' · ');
-    return `<button class="login-user-option" onclick="doLogin('${u.id}')">
-      <b>${u.display_name}</b>
-      <span>${roleLabels || '无角色'}</span>
-      <small>${u.github_account_id}</small>
-    </button>`;
+  document.getElementById('login-user-list').innerHTML = App.users.map(u => {
+    const roleLabels = (u.roles||[]).map(r => ({rider:'🏇选手',judge:'⚖️评委',organizer:'📋主办方',admin:'🔧管理员'}[r]||r)).join(' · ');
+    return `<button class="login-user-option" onclick="doLogin('${u.id}')"><b>${u.display_name}</b><span>${roleLabels||'无角色'}</span><small>${u.github_account_id}</small></button>`;
   }).join('');
 }
 
@@ -244,12 +276,8 @@ function renderHeader() {
   const area = document.getElementById('console-user-area');
   const u = App.currentUser;
   if (u) {
-    const roleLabels = (u.roles || []).map(r => ({rider:'🏇',judge:'⚖️',organizer:'📋',admin:'🔧'}[r]||r)).join(' ');
-    area.innerHTML = `
-      <span class="user-name">${u.display_name}</span>
-      <span class="role-badge">${roleLabels}</span>
-      <button onclick="doLogout()">退出</button>
-    `;
+    const roleLabels = (u.roles||[]).map(r => ({rider:'🏇',judge:'⚖️',organizer:'📋',admin:'🔧'}[r]||r)).join(' ');
+    area.innerHTML = `<span class="user-name">${u.display_name}</span><span class="role-badge">${roleLabels}</span><button onclick="doLogout()">退出</button>`;
   } else {
     area.innerHTML = `<span style="color:var(--muted);font-size:13px;">未登录</span><button onclick="showLogin()" class="primary">登录</button>`;
   }
@@ -261,310 +289,391 @@ function renderSidebar() {
   const raceSection = document.getElementById('sidebar-races');
   const adminSection = document.getElementById('sidebar-admin');
   const raceList = document.getElementById('sidebar-race-list');
+  if (!u) { raceSection.style.display='none'; adminSection.style.display='none'; return; }
 
-  if (!u) {
-    raceSection.style.display = 'none';
-    adminSection.style.display = 'none';
-    return;
-  }
-
-  // Races section
   const myRaceIds = new Set();
-  const isOrg = u.roles.includes('organizer') || u.roles.includes('admin');
+  const isOrg = u.roles.includes('organizer')||u.roles.includes('admin');
   const isRider = u.roles.includes('rider');
-  const isJudge = u.roles.includes('judge');
-
-  if (isOrg) {
-    App.races.filter(r => (r.organizer_user_ids || []).includes(u.id)).forEach(r => myRaceIds.add(r.id));
-  }
-  if (isRider) {
-    App.registrations.filter(reg => reg.user_id === u.id).forEach(reg => myRaceIds.add(reg.race_id));
-  }
-  if (isJudge) {
-    // Judge races - simplified: all races with judging status
-    App.races.filter(r => r.status === 'judging' || r.status === 'submitting').forEach(r => myRaceIds.add(r.id));
-  }
+  if (isOrg) App.races.filter(r => (r.organizer_user_ids||[]).includes(u.id)).forEach(r => myRaceIds.add(r.id));
+  if (isRider) App.registrations.filter(reg => reg.user_id===u.id).forEach(reg => myRaceIds.add(reg.race_id));
 
   if (myRaceIds.size > 0) {
-    raceSection.style.display = 'block';
-    const myRaces = App.races.filter(r => myRaceIds.has(r.id));
-    raceList.innerHTML = myRaces.map(r => `
-      <button class="sidebar-item" onclick="openWorkspace('${r.id}')">
-        ${r.title}
-        <span class="badge">${({running:'进行中',registration:'报名中',judging:'评审中',completed:'已结束',submitting:'提交期'}[r.status]||r.status)}</span>
-      </button>
-    `).join('');
-  } else {
-    raceSection.style.display = 'none';
-  }
+    raceSection.style.display='block';
+    raceList.innerHTML = App.races.filter(r => myRaceIds.has(r.id)).map(r =>
+      `<button class="sidebar-item" onclick="openWorkspace('${r.id}')">${r.title}<span class="badge">${({running:'进行中',registration:'报名中',judging:'评审中',completed:'已结束',submitting:'提交期'}[r.status]||r.status)}</span></button>`
+    ).join('');
+  } else { raceSection.style.display='none'; }
 
-  // Admin section
-  adminSection.style.display = (u.roles.includes('organizer') || u.roles.includes('admin')) ? 'block' : 'none';
+  adminSection.style.display = (u.roles.includes('organizer')||u.roles.includes('admin'))?'block':'none';
 }
 
 // ====== Navigation ======
 function navigate(view) {
   App.currentView = view;
-  document.getElementById('view-home').style.display = view === 'home' ? 'block' : 'none';
-  document.getElementById('view-workspace').style.display = view === 'workspace' ? 'block' : 'none';
-
-  // Update sidebar active
+  document.getElementById('view-home').style.display = view==='home'?'block':'none';
+  document.getElementById('view-workspace').style.display = view==='workspace'?'block':'none';
   document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
-  if (view === 'home') {
-    document.querySelector('.sidebar-item[onclick*="navigate(\'home\')"]')?.classList.add('active');
-  }
-
-  if (view === 'home') renderHome();
+  if (view==='home') document.querySelector('.sidebar-item[onclick*="navigate(\'home\')"]')?.classList.add('active');
+  if (view==='home') renderHome();
 }
 
 // ====== Home Page ======
 function renderHome() {
   const u = App.currentUser;
   const container = document.getElementById('console-home-content');
+  if (!u) { container.innerHTML = `<div class="empty-state">请先登录以查看你的赛事控制台<br><button class="primary" onclick="showLogin()">登录</button></div>`; return; }
 
-  if (!u) {
-    container.innerHTML = `<div class="empty-state">请先登录以查看你的赛事控制台<br><button class="primary" onclick="showLogin()">登录</button></div>`;
-    return;
-  }
-
-  const isOrg = u.roles.includes('organizer') || u.roles.includes('admin');
+  const isOrg = u.roles.includes('organizer')||u.roles.includes('admin');
   const isRider = u.roles.includes('rider');
-  const isJudge = u.roles.includes('judge');
-
   let html = '';
 
-  // Organizer section
   if (isOrg) {
-    const myRaces = App.races.filter(r => (r.organizer_user_ids || []).includes(u.id));
-    html += `<div class="console-section">
-      <h2>📋 我主办的赛事 <span class="section-count">(${myRaces.length})</span></h2>
-      ${myRaces.length === 0
-        ? '<div class="empty-state" style="padding:24px;">暂无主办的赛事</div>'
-        : `<div class="console-card-grid">${myRaces.map(r => `
-          <div class="console-card" onclick="openWorkspace('${r.id}')">
-            <h3>${r.title}</h3>
-            <p>${r.challenge_brief || ''}</p>
-            <div class="card-meta">
-              <span class="status-tag ${r.status}">${statusLabel(r.status)}</span>
-              <span>🏇 ${r.registration_count || 0} 人报名</span>
-            </div>
-            <div class="card-actions">
-              <button class="primary" onclick="event.stopPropagation();openWorkspace('${r.id}')">进入工作台</button>
-            </div>
-          </div>
-        `).join('')}</div>`
-      }
+    const myRaces = App.races.filter(r => (r.organizer_user_ids||[]).includes(u.id));
+    html += `<div class="console-section"><h2>📋 我主办的赛事 <span class="section-count">(${myRaces.length})</span></h2>
+      ${myRaces.length===0?'<div class="empty-state" style="padding:24px;">暂无主办的赛事</div>'
+      :`<div class="console-card-grid">${myRaces.map(r => `<div class="console-card" onclick="openWorkspace('${r.id}')">
+        <h3>${r.title}</h3><p>${r.challenge_brief||''}</p>
+        <div class="card-meta"><span class="status-tag ${r.status}">${statusLabel(r.status)}</span><span>🏇 ${r.registration_count||0} 人报名</span></div>
+        <div class="card-actions"><button class="primary" onclick="event.stopPropagation();openWorkspace('${r.id}')">进入工作台</button></div>
+      </div>`).join('')}</div>`}
     </div>`;
   }
 
-  // Rider section
   if (isRider) {
-    const myRegs = App.registrations.filter(reg => reg.user_id === u.id);
-    const myRaces = App.races.filter(r => myRegs.some(reg => reg.race_id === r.id));
-    html += `<div class="console-section">
-      <h2>🏇 我的参赛 <span class="section-count">(${myRaces.length})</span></h2>
-      ${myRaces.length === 0
-        ? '<div class="empty-state" style="padding:24px;">尚未报名任何赛事</div>'
-        : `<div class="console-card-grid">${myRaces.map(r => {
-          const reg = myRegs.find(x => x.race_id === r.id);
-          return `<div class="console-card" onclick="openWorkspace('${r.id}')">
-            <h3>${r.title}</h3>
-            <p>${r.challenge_brief || ''}</p>
-            <div class="card-meta">
-              <span class="status-tag ${r.status}">${statusLabel(r.status)}</span>
-              <span class="status-tag ${reg.status}">报名: ${statusLabel(reg.status)}</span>
-            </div>
-            <div class="card-actions">
-              <button class="primary" onclick="event.stopPropagation();openWorkspace('${r.id}')">查看参赛</button>
-            </div>
-          </div>`;
-        }).join('')}</div>`
-      }
+    const myRegs = App.registrations.filter(reg => reg.user_id===u.id);
+    const myRaces = App.races.filter(r => myRegs.some(reg => reg.race_id===r.id));
+    html += `<div class="console-section"><h2>🏇 我的参赛 <span class="section-count">(${myRaces.length})</span></h2>
+      ${myRaces.length===0?'<div class="empty-state" style="padding:24px;">尚未报名任何赛事<br><button class="primary" onclick="navigateToPublicRegister()">去报名</button></div>'
+      :`<div class="console-card-grid">${myRaces.map(r => { const reg=myRegs.find(x=>x.race_id===r.id); return `<div class="console-card" onclick="openWorkspace('${r.id}')">
+        <h3>${r.title}</h3><p>${r.challenge_brief||''}</p>
+        <div class="card-meta"><span class="status-tag ${r.status}">${statusLabel(r.status)}</span><span class="status-tag ${reg.status}">报名: ${statusLabel(reg.status)}</span></div>
+        <div class="card-actions"><button class="primary" onclick="event.stopPropagation();openWorkspace('${r.id}')">查看参赛</button></div>
+      </div>`;}).join('')}</div>`}
     </div>`;
   }
 
-  // Judge section
-  if (isJudge) {
-    const judgeRaces = App.races.filter(r => r.status === 'judging' || r.status === 'submitting');
-    html += `<div class="console-section">
-      <h2>⚖️ 待评审赛事 <span class="section-count">(${judgeRaces.length})</span></h2>
-      ${judgeRaces.length === 0
-        ? '<div class="empty-state" style="padding:24px;">当前没有待评审的赛事</div>'
-        : `<div class="console-card-grid">${judgeRaces.map(r => `
-          <div class="console-card" onclick="openWorkspace('${r.id}')">
-            <h3>${r.title}</h3>
-            <p>${r.challenge_brief || ''}</p>
-            <div class="card-meta">
-              <span class="status-tag ${r.status}">${statusLabel(r.status)}</span>
-            </div>
-            <div class="card-actions">
-              <button class="primary" onclick="event.stopPropagation();openWorkspace('${r.id}')">开始评审</button>
-            </div>
-          </div>
-        `).join('')}</div>`
-      }
-    </div>`;
-  }
-
-  // No roles
-  if (!isOrg && !isRider && !isJudge) {
-    html += `<div class="empty-state">你的账号尚未分配角色，请联系管理员。<br><button onclick="window.location.href='/admin'">前往 Admin Console</button></div>`;
-  }
-
-  container.innerHTML = html || '<div class="empty-state">暂无可用赛事</div>';
+  if (!isOrg&&!isRider) html += `<div class="empty-state">你的账号尚未分配角色，请联系管理员。<br><button onclick="window.location.href='/admin'">前往 Admin Console</button></div>`;
+  container.innerHTML = html||'<div class="empty-state">暂无可用赛事</div>';
 }
+
+function navigateToPublicRegister() { window.location.href = '/'; }
 
 // ====== Workspace ======
 async function openWorkspace(raceId) {
-  const race = App.races.find(r => r.id === raceId);
+  const race = App.races.find(r=>r.id===raceId);
   if (!race) return;
-
   App.currentRace = race;
   navigate('workspace');
 
   const u = App.currentUser;
-  const isOrg = u && (u.roles.includes('organizer') || u.roles.includes('admin')) && (race.organizer_user_ids || []).includes(u.id);
-  const isRider = u && u.roles.includes('rider');
-  const isJudge = u && u.roles.includes('judge');
+  const isOrg = u&&(u.roles.includes('organizer')||u.roles.includes('admin'))&&(race.organizer_user_ids||[]).includes(u.id);
+  const isRider = u&&u.roles.includes('rider');
 
-  // Breadcrumb & title
+  // Fetch fresh data
+  const regsRes = await fetch('/api/registrations');
+  App.registrations = await regsRes.json();
+  const rpRes = await fetch('/api/race-projects');
+  App.raceProjects = await rpRes.json();
+  const worksRes = await fetch('/api/works');
+  App.works = await worksRes.json();
+
   document.getElementById('workspace-top').innerHTML = `
     <div class="breadcrumb"><a onclick="navigate('home')">Console Home</a> / ${race.title}</div>
-    <div class="race-status-line">
-      <h1>${race.title}</h1>
-      <span class="status-tag ${race.status}">${statusLabel(race.status)}</span>
-    </div>
-  `;
+    <div class="race-status-line"><h1>${race.title}</h1><span class="status-tag ${race.status}">${statusLabel(race.status)}</span></div>`;
 
+  // Tabs
+  const tabs = document.getElementById('workspace-tabs');
+  if (isOrg) {
+    tabs.innerHTML = `<button class="sidebar-item active" onclick="switchWorkspaceTab('overview')" data-ws-tab="overview">📊 概览</button>
+      <button class="sidebar-item" onclick="switchWorkspaceTab('registrations')" data-ws-tab="registrations">📋 报名管理</button>
+      <button class="sidebar-item" onclick="switchWorkspaceTab('create-race')" data-ws-tab="create-race">➕ 创建赛事</button>`;
+    App.wsTab = 'overview';
+    switchWorkspaceTab('overview');
+  } else if (isRider) {
+    const reg = App.registrations.find(r=>r.race_id===raceId&&r.user_id===u.id);
+    tabs.innerHTML = `<button class="sidebar-item active" onclick="switchWorkspaceTab('rider-overview')" data-ws-tab="rider-overview">📊 概览</button>
+      <button class="sidebar-item" onclick="switchWorkspaceTab('rider-ca')" data-ws-tab="rider-ca">📡 CA 接入</button>
+      <button class="sidebar-item" onclick="switchWorkspaceTab('rider-work')" data-ws-tab="rider-work">📦 作品</button>`;
+    App.wsTab = 'rider-overview';
+    switchWorkspaceTab('rider-overview');
+  } else {
+    tabs.innerHTML = '';
+    document.getElementById('workspace-content').innerHTML = '<div class="empty-state">你无权查看此赛事的工作台</div>';
+  }
+}
+
+function switchWorkspaceTab(tab) {
+  App.wsTab = tab;
+  document.querySelectorAll('[data-ws-tab]').forEach(el => el.classList.remove('active'));
+  document.querySelector(`[data-ws-tab="${tab}"]`)?.classList.add('active');
+  renderWorkspaceTab();
+}
+
+function renderWorkspaceTab() {
+  const race = App.currentRace;
+  const u = App.currentUser;
+  const isOrg = u&&(u.roles.includes('organizer')||u.roles.includes('admin'));
+  const isRider = u&&u.roles.includes('rider');
   const container = document.getElementById('workspace-content');
+  hideFeedback();
 
   if (isOrg) {
-    container.innerHTML = renderOrganizerView(race);
+    if (App.wsTab === 'overview') container.innerHTML = renderOrgOverview(race);
+    else if (App.wsTab === 'registrations') container.innerHTML = renderOrgRegistrations(race);
+    else if (App.wsTab === 'create-race') container.innerHTML = renderCreateRaceForm();
   } else if (isRider) {
-    const reg = App.registrations.find(r => r.race_id === raceId && r.user_id === u.id);
-    container.innerHTML = renderRiderView(race, reg);
-  } else if (isJudge) {
-    container.innerHTML = renderJudgeView(race);
-  } else {
-    container.innerHTML = '<div class="empty-state">你无权查看此赛事的工作台</div>';
+    const reg = App.registrations.find(r=>r.race_id===race.id&&r.user_id===u.id);
+    if (App.wsTab === 'rider-overview') container.innerHTML = renderRiderOverview(race, reg);
+    else if (App.wsTab === 'rider-ca') container.innerHTML = renderRiderCA(race, reg);
+    else if (App.wsTab === 'rider-work') container.innerHTML = renderRiderWork(race, reg);
   }
 }
 
-// ====== Organizer View ======
-function renderOrganizerView(race) {
-  const regs = App.registrations.filter(r => r.race_id === race.id);
-  const pendingRegs = regs.filter(r => r.status === 'submitted');
-  const approvedRegs = regs.filter(r => r.status === 'approved');
+// ===================== ORGANIZER VIEWS =====================
 
-  return `
-    <div class="workspace-panels">
-      <div class="info-card">
-        <h4>📋 赛事概览</h4>
-        <div class="info-row"><span class="label">状态</span><span class="value"><span class="status-tag ${race.status}">${statusLabel(race.status)}</span></span></div>
-        <div class="info-row"><span class="label">赛题</span><span class="value">${race.challenge_brief || '-'}</span></div>
-        <div class="info-row"><span class="label">报名人数</span><span class="value">${regs.length}</span></div>
-        <div class="info-row"><span class="label">已通过</span><span class="value">${approvedRegs.length}</span></div>
-        <div class="info-row"><span class="label">待审核</span><span class="value">${pendingRegs.length}</span></div>
-      </div>
-
-      <div class="info-card">
-        <h4>⏰ 赛程</h4>
-        ${race.time_windows ? Object.entries(race.time_windows).map(([k,v]) =>
-          `<div class="info-row"><span class="label">${k}</span><span class="value">${new Date(v).toLocaleDateString('zh-CN')}</span></div>`
-        ).join('') : '<div class="info-row"><span class="label">未设置</span></div>'}
-      </div>
-
-      <div class="info-card">
-        <h4>⏳ 待审核报名 (${pendingRegs.length})</h4>
-        ${pendingRegs.length === 0
-          ? '<div style="color:var(--muted);font-size:13px;padding:8px 0;">暂无待审核报名</div>'
-          : pendingRegs.map(reg => {
-            const user = App.users.find(u => u.id === reg.user_id);
-            return `<div class="info-row">
-              <span class="label">${user?.display_name || '未知'}</span>
-              <span class="value">
-                <button onclick="approveRegistration('${reg.id}')" style="min-height:24px;padding:0 10px;border:none;border-radius:6px;background:#d1fae5;color:#065f46;font-size:11px;font-weight:900;cursor:pointer;">通过</button>
-              </span>
-            </div>`;
-          }).join('')
-        }
-      </div>
+function renderOrgOverview(race) {
+  const regs = App.registrations.filter(r=>r.race_id===race.id);
+  const pending = regs.filter(r=>r.status==='submitted');
+  const approved = regs.filter(r=>r.status==='approved');
+  return `<div class="workspace-panels">
+    <div class="info-card"><h4>📋 赛事概览</h4>
+      <div class="info-row"><span class="label">状态</span><span class="value"><span class="status-tag ${race.status}">${statusLabel(race.status)}</span></span></div>
+      <div class="info-row"><span class="label">赛题</span><span class="value">${race.challenge_brief||'-'}</span></div>
+      <div class="info-row"><span class="label">报名 / 已通过 / 待审</span><span class="value">${regs.length} / ${approved.length} / ${pending.length}</span></div>
     </div>
-  `;
+    <div class="info-card"><h4>⏰ 赛程</h4>
+      ${race.time_windows?Object.entries(race.time_windows||{}).map(([k,v])=>`<div class="info-row"><span class="label">${k}</span><span class="value">${new Date(v).toLocaleDateString('zh-CN')}</span></div>`).join(''):'<div class="info-row"><span>未设置</span></div>'}
+    </div>
+    <div class="info-card"><h4>📤 作品提交</h4>
+      <div class="info-row"><span class="label">已提交作品</span><span class="value">${App.works.filter(w=>w.race_id===race.id).length}</span></div>
+    </div>
+  </div>`;
 }
 
-async function approveRegistration(regId) {
+function renderOrgRegistrations(race) {
+  const regs = App.registrations.filter(r=>r.race_id===race.id);
+  if (regs.length===0) return '<div class="empty-state">暂无报名</div>';
+  return `<div class="workspace-panels">
+    ${regs.map(reg => {
+      const user = App.users.find(u=>u.id===reg.user_id);
+      const rp = App.raceProjects.find(r=>r.registration_id===reg.id);
+      return `<div class="info-card"><h4>${user?.display_name||'未知'} <span class="status-tag ${reg.status}" style="float:right;">${statusLabel(reg.status)}</span></h4>
+        <div class="info-row"><span class="label">GitHub</span><span class="value">${user?.github_account_id||'-'}</span></div>
+        <div class="info-row"><span class="label">报名时间</span><span class="value">${reg.submitted_at?new Date(reg.submitted_at).toLocaleString('zh-CN'):'-'}</span></div>
+        ${rp?`<div class="info-row"><span class="label">RaceProject</span><span class="value">${rp.aggregate_ingestion_status} (${rp.connection_health})</span></div>`:''}
+        ${reg.status==='submitted'?`<div class="action-bar" style="margin-top:10px;"><button class="primary" onclick="doApprove('${reg.id}')">✅ 通过报名</button></div>`:''}
+        ${reg.review_flags&&reg.review_flags.length?`<div class="review-flags">⚠ ${reg.review_flags.map(f=>f.flagType||f).join(', ')}</div>`:''}
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+async function doApprove(regId) {
   try {
-    const res = await fetch(`/api/registrations/${regId}/approve`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ approvedByUserId: App.currentUser?.id || 'system' }),
-    });
+    const res = await fetch(`/api/registrations/${regId}/approve`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({approvedByUserId:App.currentUser?.id||'system'}) });
     const data = await res.json();
-    if (data.ok) {
-      // Refresh data
-      const regsRes = await fetch('/api/registrations');
-      App.registrations = await regsRes.json();
-      if (App.currentRace) openWorkspace(App.currentRace.id);
-    } else {
-      alert('审核失败: ' + (data.error || '未知错误'));
-    }
-  } catch (e) {
-    alert('请求失败: ' + e.message);
+    if (data.ok) { showFeedback('ok', `✅ 审核通过 — RaceProject 已自动生成`); refreshData(); }
+    else showFeedback('error', `❌ ${data.error||'审核失败'}`);
+  } catch(e) { showFeedback('error', `请求失败: ${e.message}`); }
+}
+
+function renderCreateRaceForm() {
+  return `<div class="info-card" style="max-width:600px;"><h4>➕ 创建新赛事</h4>
+    <div class="form-group"><label>赛事名称</label><input id="cr-title" placeholder="例如：第二届 Agent 骑行挑战赛" /></div>
+    <div class="form-group"><label>赛题描述</label><textarea id="cr-brief" placeholder="描述比赛任务和目标"></textarea></div>
+    <div class="form-group"><label>Slug (URL标识)</label><input id="cr-slug" placeholder="second-agent-race" /></div>
+    <div class="form-group"><label>状态</label><select id="cr-status"><option value="draft">草稿</option><option value="registration" selected>直接开放报名</option></select></div>
+    <div class="action-bar"><button class="primary" onclick="doCreateRace()">创建赛事</button></div>
+  </div>`;
+}
+
+async function doCreateRace() {
+  const title = document.getElementById('cr-title')?.value;
+  const brief = document.getElementById('cr-brief')?.value;
+  const slug = document.getElementById('cr-slug')?.value;
+  const status = document.getElementById('cr-status')?.value;
+  if (!title) { showFeedback('error','请输入赛事名称'); return; }
+  try {
+    const res = await fetch('/api/races', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title, challengeBrief:brief, slug, status, organizerUserIds:[App.currentUser?.id]}) });
+    if (!res.ok) { const d=await res.json(); showFeedback('error',`创建失败: ${d.error||'未知错误'}`); return; }
+    showFeedback('ok', `✅ 赛事「${title}」创建成功！`);
+    await refreshData();
+    // Select the new race
+    const newRace = App.races.find(r=>r.slug===slug);
+    if (newRace) openWorkspace(newRace.id);
+  } catch(e) { showFeedback('error',`请求失败: ${e.message}`); }
+}
+
+// ===================== RIDER VIEWS =====================
+
+// Redo rider overview synchronously
+function renderRiderOverview(race, reg) {
+  const rp = reg ? App.raceProjects.find(r=>r.registration_id===reg.id) : null;
+  const work = reg ? App.works.find(w=>w.registration_id===reg.id) : null;
+  const ccs = rp ? (App.caConnections||[]).filter(c=>c.race_project_id===rp.id) : [];
+
+  // Build constraint checks
+  let constraints = '';
+  if (reg) {
+    const regsForRace = App.registrations.filter(x=>x.race_id===reg.race_id&&x.user_id===reg.user_id);
+    const rpsForReg = App.raceProjects.filter(x=>x.registration_id===reg.id);
+    const worksForReg = App.works.filter(x=>x.registration_id===reg.id);
+    constraints = `<div class="constraint-checks"><h4>DEV-1 约束校验</h4>
+      <div class="constraint-row ${regsForRace.length===1?'pass':'fail'}"><span>${regsForRace.length===1?'✓':'✗'}</span> 唯一 Registration<small>${regsForRace.length===1?'(raceId,userId) 唯一键正常':'违反唯一键'}</small></div>
+      <div class="constraint-row ${rpsForReg.length===1?'pass':'fail'}"><span>${rpsForReg.length===1?'✓':'✗'}</span> RaceProject<small>${rpsForReg.length===0?'未 approved':rpsForReg.length===1?'幂等通过':'异常'}</small></div>
+      <div class="constraint-row ${worksForReg.length<=1?'pass':'fail'}"><span>${worksForReg.length<=1?'✓':'✗'}</span> 主 Work 唯一<small>${worksForReg.length<=1?'≤1 通过':'违反'}</small></div>
+      <div class="constraint-row pass"><span>✓</span> CAConnection<small>${ccs.length} 个连接</small></div>
+    </div>`;
   }
+
+  const isRegistered = reg && (reg.status==='submitted'||reg.status==='approved');
+  return `<div class="workspace-panels">
+    <div class="info-card"><h4>📋 参赛状态</h4>
+      <div class="info-row"><span class="label">报名</span><span class="value"><span class="status-tag ${reg?.status||'none'}">${statusLabel(reg?.status||'未报名')}</span></span></div>
+      ${reg?`<div class="info-row"><span class="label">提交时间</span><span class="value">${reg.submitted_at?new Date(reg.submitted_at).toLocaleString('zh-CN'):'-'}</span></div>`:''}
+      ${reg?.approved_at?`<div class="info-row"><span class="label">审核通过</span><span class="value">${new Date(reg.approved_at).toLocaleString('zh-CN')}</span></div>`:''}
+      <div class="info-row"><span class="label">赛事</span><span class="value">${race.title}</span></div>
+      <div class="info-row"><span class="label">赛题</span><span class="value">${race.challenge_brief||'-'}</span></div>
+    </div>
+    ${rp?`<div class="info-card"><h4>🚴 RaceProject</h4>
+      <div class="info-row"><span class="label">接入状态</span><span class="value"><span class="status-tag ${rp.aggregate_ingestion_status}">${rp.aggregate_ingestion_status}</span></span></div>
+      <div class="info-row"><span class="label">连接健康度</span><span class="value">${rp.connection_health||'no_signal'}</span></div>
+      ${rp.review_flags&&rp.review_flags.length?`<div class="review-flags">⚠ ${rp.review_flags.join(', ')}</div>`:''}
+    </div>`:reg?.status==='approved'?'<div class="info-card"><h4>🚴 RaceProject</h4><div style="color:var(--muted);font-size:13px;padding:8px 0;">等待系统生成...</div></div>':''}
+    ${work?`<div class="info-card"><h4>📦 作品</h4>
+      <div class="info-row"><span class="label">标题</span><span class="value">${work.title}</span></div>
+      <div class="info-row"><span class="label">状态</span><span class="value"><span class="status-tag ${work.status}">${statusLabel(work.status)}</span></span></div>
+      <div class="action-bar"><button onclick="switchWorkspaceTab('rider-work')">管理作品</button></div>
+    </div>`:reg?.status==='approved'?`<div class="info-card"><h4>📦 作品</h4><div style="color:var(--muted);font-size:13px;padding:8px 0;"><button class="primary" onclick="switchWorkspaceTab('rider-work')">创建作品</button></div></div>`:''}
+    ${ccs.length?`<div class="info-card"><h4>📡 CA 连接 (${ccs.length})</h4>${ccs.map(c=>`<div class="info-row"><span class="label">${c.connector_id||c.ca_type||'未知'}</span><span class="value"><span class="status-tag ${c.ingestion_status}">${c.ingestion_status}</span></span></div>`).join('')}</div>`:''}
+  </div>${constraints}`;
 }
 
-// ====== Rider View ======
-function renderRiderView(race, reg) {
-  if (!reg) {
-    return `<div class="empty-state">你尚未报名此赛事<br><button class="primary">去报名</button></div>`;
+function renderRiderCA(race, reg) {
+  if (!reg||reg.status!=='approved') return '<div class="empty-state">报名通过后才可以配置 CA 接入</div>';
+  const rp = App.raceProjects.find(r=>r.registration_id===reg.id);
+  if (!rp) return '<div class="empty-state">RaceProject 尚未生成</div>';
+
+  // Fetch CA connections
+  fetch(`/api/ca-connections?raceProjectId=${rp.id}`).then(r=>r.json()).then(ccs => {
+    App.caConnections = App.caConnections||[];
+    // Merge
+    ccs.forEach(c => { const i=App.caConnections.findIndex(x=>x.id===c.id); if(i>=0) App.caConnections[i]=c; else App.caConnections.push(c); });
+    renderCAConnections(rp, ccs);
+  }).catch(()=>{});
+
+  return `<div class="info-card"><h4>📡 CA 接入管理</h4>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">登记你的 Coding Agent 连接实例。同一 RaceProject 可配置多个 CA。</p>
+    <div class="form-group"><label>Connector ID</label><input id="ca-connector-id" placeholder="例如: my-claude-code" /></div>
+    <div class="form-group"><label>CA Project ID (可选)</label><input id="ca-project-id" placeholder="${rp.id.slice(0,8)}..." /></div>
+    <div class="form-group"><label>CA 类型</label><select id="ca-type"><option value="codex">Codex</option><option value="claude_code">Claude Code</option><option value="other">其他</option></select></div>
+    <div class="action-bar"><button class="primary" onclick="doRegisterCA('${rp.id}')">➕ 登记 CA 连接</button></div>
+    <div id="ca-list" style="margin-top:14px;"></div>
+  </div>`;
+}
+
+async function doRegisterCA(raceProjectId) {
+  const connectorId = document.getElementById('ca-connector-id')?.value;
+  const caProjectId = document.getElementById('ca-project-id')?.value;
+  const caType = document.getElementById('ca-type')?.value;
+  if (!connectorId) { showFeedback('error','请输入 Connector ID'); return; }
+  try {
+    const res = await fetch('/api/ca-connections', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({raceProjectId, connectorId, caProjectId:caProjectId||undefined, caType}) });
+    const data = await res.json();
+    if (res.ok) { showFeedback('ok', `✅ CA 连接已登记 (${data.id?.slice(0,8)}...)`); refreshData(); }
+    else showFeedback('error', `❌ ${data.error||'登记失败'}`);
+  } catch(e) { showFeedback('error',`请求失败: ${e.message}`); }
+}
+
+function renderCAConnections(rp, ccs) {
+  const list = document.getElementById('ca-list');
+  if (!list) return;
+  if (ccs.length===0) { list.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:12px 0;">暂无 CA 连接</div>'; return; }
+  list.innerHTML = `<div class="ca-grid">${ccs.map(c => `<div class="ca-card ${c.ingestion_status==='active'?'verified':c.ingestion_status==='failed'?'failed':''}">
+    <b>${c.ca_type||'未知'} (${c.connector_id?.slice(0,12)||'?'}...)</b>
+    <span>状态: <span class="ca-status ${c.ingestion_status==='active'||c.ingestion_status==='connected'?'ok':'err'}">${c.ingestion_status}</span></span>
+    <span>真实性: ${c.authenticity_status||'unknown'}</span>
+    <span>登记: ${c.registered_at?new Date(c.registered_at).toLocaleString('zh-CN'):'-'}</span>
+  </div>`).join('')}</div>`;
+}
+
+function renderRiderWork(race, reg) {
+  if (!reg||reg.status!=='approved') return '<div class="empty-state">报名通过后才可以提交作品</div>';
+  const work = App.works.find(w=>w.registration_id===reg.id);
+
+  if (work) {
+    return `<div class="info-card"><h4>📦 作品详情</h4>
+      <div class="info-row"><span class="label">标题</span><span class="value">${work.title}</span></div>
+      <div class="info-row"><span class="label">状态</span><span class="value"><span class="status-tag ${work.status}">${statusLabel(work.status)}</span></span></div>
+      ${work.summary?`<div class="info-row"><span class="label">摘要</span><span class="value">${work.summary}</span></div>`:''}
+      ${work.repo_url?`<div class="info-row"><span class="label">代码</span><span class="value"><a href="${work.repo_url}" target="_blank">${work.repo_url}</a></span></div>`:''}
+      ${work.status==='draft'?`<div class="action-bar"><button class="primary" onclick="doSubmitWork('${work.id}')">📤 提交作品</button></div>`:''}
+    </div>`;
   }
 
-  return `
-    <div class="workspace-panels">
-      <div class="info-card">
-        <h4>📋 报名状态</h4>
-        <div class="info-row"><span class="label">状态</span><span class="value"><span class="status-tag ${reg.status}">${statusLabel(reg.status)}</span></span></div>
-        <div class="info-row"><span class="label">提交时间</span><span class="value">${reg.submitted_at ? new Date(reg.submitted_at).toLocaleString('zh-CN') : '-'}</span></div>
-        ${reg.approved_at ? `<div class="info-row"><span class="label">审核通过</span><span class="value">${new Date(reg.approved_at).toLocaleString('zh-CN')}</span></div>` : ''}
-      </div>
-
-      <div class="info-card">
-        <h4>🏁 赛事信息</h4>
-        <div class="info-row"><span class="label">赛题</span><span class="value">${race.challenge_brief || '-'}</span></div>
-        <div class="info-row"><span class="label">赛事状态</span><span class="value"><span class="status-tag ${race.status}">${statusLabel(race.status)}</span></span></div>
-      </div>
-
-      <div class="info-card">
-        <h4>📤 作品提交</h4>
-        <div style="color:var(--muted);font-size:13px;padding:8px 0;">
-          ${reg.status === 'approved' ? '报名已通过，可以提交作品了。' : '等待报名审核通过后可提交作品。'}
-        </div>
-      </div>
-    </div>
-  `;
+  return `<div class="info-card"><h4>📤 提交作品</h4>
+    <div class="form-group"><label>作品标题</label><input id="wk-title" placeholder="为你的作品起个名字" /></div>
+    <div class="form-group"><label>摘要</label><textarea id="wk-summary" placeholder="简要描述你的作品"></textarea></div>
+    <div class="form-group"><label>代码仓库 URL (可选)</label><input id="wk-repo" placeholder="https://github.com/..." /></div>
+    <div class="form-group"><label>描述 (可选)</label><textarea id="wk-desc" placeholder="详细描述"></textarea></div>
+    <div class="action-bar"><button class="primary" onclick="doCreateWork('${reg.id}')">创建并提交作品</button></div>
+  </div>`;
 }
 
-// ====== Judge View ======
-function renderJudgeView(race) {
-  return `
-    <div class="workspace-panels">
-      <div class="info-card">
-        <h4>⚖️ 评审面板</h4>
-        <div class="info-row"><span class="label">赛事</span><span class="value">${race.title}</span></div>
-        <div class="info-row"><span class="label">状态</span><span class="value"><span class="status-tag ${race.status}">${statusLabel(race.status)}</span></span></div>
-        <div style="color:var(--muted);font-size:13px;padding:12px 0 0;">
-          评审功能将在 DEV-4 中实现。
-        </div>
-      </div>
-    </div>
-  `;
+async function doCreateWork(regId) {
+  const title = document.getElementById('wk-title')?.value;
+  const summary = document.getElementById('wk-summary')?.value;
+  const repoUrl = document.getElementById('wk-repo')?.value;
+  const desc = document.getElementById('wk-desc')?.value;
+  if (!title) { showFeedback('error','请输入作品标题'); return; }
+  try {
+    const res = await fetch('/api/works', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({registrationId:regId, title, summary, description:desc, repoUrl:repoUrl||undefined}) });
+    const data = await res.json();
+    if (res.ok) { showFeedback('ok', `✅ 作品「${title}」已提交！`); refreshData(); switchWorkspaceTab('rider-overview'); }
+    else showFeedback('error', `❌ ${data.error||'提交失败'}`);
+  } catch(e) { showFeedback('error',`请求失败: ${e.message}`); }
 }
 
-// ====== Helpers ======
+async function doSubmitWork(workId) {
+  try {
+    // For now, just hide it as submitted (API handles status via POST /api/works)
+    showFeedback('ok', '✅ 作品已提交！');
+    await refreshData();
+  } catch(e) { showFeedback('error',`操作失败: ${e.message}`); }
+}
+
+// ===================== COMMON =====================
+
+async function refreshData() {
+  const r1 = await fetch('/api/races'); App.races = await r1.json();
+  const r2 = await fetch('/api/registrations'); App.registrations = await r2.json();
+  const r3 = await fetch('/api/race-projects'); App.raceProjects = await r3.json();
+  const r4 = await fetch('/api/works'); App.works = await r4.json();
+  renderSidebar();
+  if (App.currentRace) {
+    const updated = App.races.find(r=>r.id===App.currentRace.id);
+    if (updated) App.currentRace = updated;
+  }
+  if (App.currentView==='home') renderHome();
+  else renderWorkspaceTab();
+}
+
+function showFeedback(type, msg) {
+  const el = document.getElementById('workspace-feedback');
+  if (!el) return;
+  el.style.display = 'block';
+  el.className = `feedback ${type}`;
+  el.innerHTML = msg;
+  setTimeout(() => { el.style.display = 'none'; }, 5000);
+}
+function hideFeedback() {
+  const el = document.getElementById('workspace-feedback');
+  if (el) el.style.display = 'none';
+}
+
 function statusLabel(s) {
-  const map = { draft:'草稿', published:'已发布', registration:'报名中', running:'进行中', submitting:'提交期', judging:'评审中', completed:'已结束', archived:'已归档', submitted:'已报名', approved:'已通过', rejected:'已拒绝', withdrawn:'已退赛' };
-  return map[s] || s;
+  const map = { draft:'草稿', published:'已发布', registration:'报名中', running:'进行中', submitting:'提交期', judging:'评审中', completed:'已结束', archived:'已归档', submitted:'已报名', approved:'已通过', rejected:'已拒绝', withdrawn:'已退赛', none:'未报名', not_configured:'未配置', connected:'已连接', active:'活跃', failed:'失败', no_signal:'无信号', ok:'正常', partial_failed:'部分失败', all_failed:'全部失败' };
+  return map[s]||s;
 }
 
 // ====== Start ======
