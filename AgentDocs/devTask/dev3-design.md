@@ -188,7 +188,7 @@ Demo 登录流程：
 | **3.2 Console 框架** | Organizer/Rider/Judge 三个视图的模板框架 + 侧边栏 + 页面切换 | 2h | 否（基础框架） |
 | **3.3 Organizer View 骨架** | 赛事选择 → Organizer 工作台（仅面板框架，具体功能留 DEV-4） | 1h | 可 |
 | **3.4 Rider View 整合** | 将现有 app.html 的"我的参赛"功能移植到 Console 框架内 | 2h | 可 |
-| **3.5 Judge View 骨架** | 评审列表框架（仅面板，具体评审留 DEV-4） | 1h | 可 |
+| **3.5 Judge View 骨架** | 评审列表框架（仅面板，具体评审留 DEV-4） | 1h | 可 | ✅ DEV-4 已实现
 | **3.6 Admin Console** | 独立 admin.html：用户列表 + roles 编辑面板 + 资料状态 | 2h | 可 |
 | **3.7 登录页改造** | 将登录页整合到 Console 框架，支持 Demo 登录和角色感知跳转 | 1h | 可 |
 | **3.8 后端补充** | 新增 `PUT /api/auth/users/:id/roles` 和 `GET /api/users/me` | 1h | 可 |

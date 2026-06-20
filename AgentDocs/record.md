@@ -129,3 +129,65 @@
 - [ ] Judge View 评审流程（待 DEV-4 API 就绪）
 - [ ] GitHub OAuth 真实登录（当前为 Demo 模式）
 - [ ] Public Site 和 Console 之间的统一导航
+
+## 2026-06-21 — DEV-4 实现完成 + 兼容性验证
+
+### 新增功能
+
+| 功能 | 说明 | 状态 |
+| --- | --- | --- |
+| **评委管理** | Organizer 可为作品分配评委 + 查看评审进度 | ✅ |
+| **评审打分** | Judge 查看分配作品 → 作品分/骑行分/评语 → 提交 | ✅ |
+| **奖项发布** | Organizer 创建奖项草稿 → 发布 | ✅ |
+| **报名拒绝** | Organizer 可拒绝报名并填写原因 | ✅ |
+| **赛事状态变更** | Organizer 概览可切换 race status 下拉框 | ✅ |
+| **评委侧边栏** | Judge 用户侧边栏显示待评审赛事 | ✅ |
+
+### 新增后端 API（10 个）
+
+```
+POST/GET/DELETE /api/judge-assignments   — 评委分配
+POST/GET        /api/judging-records      — 评审记录
+GET/POST        /api/awards               — 奖项管理
+PUT             /api/awards/:id/publish   — 发布奖项
+PUT             /api/registrations/:id/reject — 拒绝报名
+PUT             /api/races/:id            — 更新赛事
+```
+
+### 全链路闭环验证
+
+```
+创建赛事(draft→published→registration)
+  → 选手报名(submitted)
+    → Organizer 审核 approve (自动生成 RaceProject)
+      → 选手提交 Work
+        → Organizer 分配评委
+          → Judge 评分(作品分+骑行分+评语)
+            → Organizer 创建+发布奖项
+              → 公开端 Results 展示
+```
+
+### 兼容性检查结果
+
+| 维度 | 检查项 | 结果 |
+| --- | --- | --- |
+| **DEV-1** | 46 条验收测试 | ✅ 全部通过 |
+| **DEV-1** | 状态机约束 | ✅ 未改动 |
+| **DEV-1** | 数据模型 | ✅ judge_assignments/judging_records/awards 已有 schema |
+| **DEV-2** | `/` 首页 | ✅ 正常 |
+| **DEV-2** | `/works.html` 作品 | ✅ 正常 |
+| **DEV-2** | `/results.html` 赛果 | ✅ 正常（读取 awards 表） |
+| **DEV-2** | `/race.html` 详情 | ✅ 正常 + CTA 按钮 |
+| **DEV-2** | Console 导航 | ✅ 指向 `/console` |
+| **DEV-3** | Console 登录/登出 | ✅ 正常 |
+| **DEV-3** | Admin Console | ✅ 角色编辑正常 |
+| **DEV-3** | Organizer 工作台 | ✅ 概览/报名/评委/奖项/创建赛事 |
+| **DEV-3** | Rider 工作台 | ✅ 概览/CA/作品 |
+| **DEV-3** | Judge 工作台 | ✅ 新增 待评审/已评审 |
+
+### 发现并修复的问题
+
+| 问题 | 修复 |
+| --- | --- |
+| 新 API 部署后 Console 请求 404 | 重启服务器即可 |
+| 评委用户侧边栏无赛事 | 增加 `isJudge` 过滤逻辑 |

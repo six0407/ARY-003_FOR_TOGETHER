@@ -49,12 +49,12 @@
 
 | 子任务 | 说明 | 前端页面 | 依赖的后端 API |
 | --- | --- | --- | --- |
-| **4.1 创建赛事** | 主办方填写赛事信息表单 → 发布 | Organizer View 内表单 | `POST /api/races` |
-| **4.2 报名审核** | 查看报名列表 → approve / reject | Organizer View 内面板 | `GET /api/registrations?raceId=`<br>`PUT /api/registrations/:id/approve`<br>`PUT /api/registrations/:id/reject` |
-| **4.3 评委分配** | 为赛事添加/移除 Judge | Organizer View 内面板 | `POST /api/judge-assignments`<br>`DELETE /api/judge-assignments/:id` |
-| **4.4 Work 提交** | Rider 填写作品标题/描述/Demo/代码链接 → 提交 | Rider View 内表单 | `POST /api/works`<br>`GET /api/works?raceId=` |
-| **4.5 评审打分** | Judge 查看作品详情 → 评分(作品分+骑行分) → 评语 | Judge View 内表单 | `POST /api/judging-records` |
-| **4.6 发布赛果** | Organizer 确认榜单 → 发布 Award | Organizer View 内面板 | `PUT /api/awards`<br>`POST /api/awards/publish` |
+| **4.1 创建赛事** | 主办方填写赛事信息表单 → 发布 | Organizer View 内表单 | `POST /api/races` | ✅ |
+| **4.2 报名审核** | 查看报名列表 → approve / reject | Organizer View 内面板 | `GET /api/registrations?raceId=`<br>`PUT /api/registrations/:id/approve`<br>`PUT /api/registrations/:id/reject` | ✅ |
+| **4.3 评委分配** | 为赛事添加/移除 Judge | Organizer View 内面板 | `POST /api/judge-assignments`<br>`DELETE /api/judge-assignments/:id` | ✅ |
+| **4.4 Work 提交** | Rider 填写作品标题/描述/Demo/代码链接 → 提交 | Rider View 内表单 | `POST /api/works`<br>`GET /api/works?raceId=` | ✅ |
+| **4.5 评审打分** | Judge 查看作品详情 → 评分(作品分+骑行分) → 评语 | Judge View 内表单 | `POST /api/judging-records` | ✅ |
+| **4.6 发布赛果** | Organizer 确认榜单 → 发布 Award | Organizer View 内面板 | `PUT /api/awards`<br>`POST /api/awards/publish` | ✅ |
 
 ---
 
