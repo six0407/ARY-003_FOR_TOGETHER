@@ -237,7 +237,10 @@ async function init() {
     if (saved) {
       const uid = saved;
       App.currentUser = App.users.find(u => u.id === uid);
-      if (App.currentUser) renderSidebar();
+      if (App.currentUser) {
+        renderHeader();
+        renderSidebar();
+      }
     }
     renderHome();
     renderLoginModal();
@@ -554,13 +557,7 @@ function renderRiderCA(race, reg) {
   const rp = App.raceProjects.find(r=>r.registration_id===reg.id);
   if (!rp) return '<div class="empty-state">RaceProject 尚未生成</div>';
 
-  // Fetch CA connections
-  fetch(`/api/ca-connections?raceProjectId=${rp.id}`).then(r=>r.json()).then(ccs => {
-    App.caConnections = App.caConnections||[];
-    // Merge
-    ccs.forEach(c => { const i=App.caConnections.findIndex(x=>x.id===c.id); if(i>=0) App.caConnections[i]=c; else App.caConnections.push(c); });
-    renderCAConnections(rp, ccs);
-  }).catch(()=>{});
+  const ccs = (App.caConnections||[]).filter(c=>c.race_project_id===rp.id);
 
   return `<div class="info-card"><h4>📡 CA 接入管理</h4>
     <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">登记你的 Coding Agent 连接实例。同一 RaceProject 可配置多个 CA。</p>
@@ -568,7 +565,7 @@ function renderRiderCA(race, reg) {
     <div class="form-group"><label>CA Project ID (可选)</label><input id="ca-project-id" placeholder="${rp.id.slice(0,8)}..." /></div>
     <div class="form-group"><label>CA 类型</label><select id="ca-type"><option value="codex">Codex</option><option value="claude_code">Claude Code</option><option value="other">其他</option></select></div>
     <div class="action-bar"><button class="primary" onclick="doRegisterCA('${rp.id}')">➕ 登记 CA 连接</button></div>
-    <div id="ca-list" style="margin-top:14px;"></div>
+    <div id="ca-list" style="margin-top:14px;">${renderCAConnectionsHTML(ccs)}</div>
   </div>`;
 }
 
@@ -585,12 +582,10 @@ async function doRegisterCA(raceProjectId) {
   } catch(e) { showFeedback('error',`请求失败: ${e.message}`); }
 }
 
-function renderCAConnections(rp, ccs) {
-  const list = document.getElementById('ca-list');
-  if (!list) return;
-  if (ccs.length===0) { list.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:12px 0;">暂无 CA 连接</div>'; return; }
-  list.innerHTML = `<div class="ca-grid">${ccs.map(c => `<div class="ca-card ${c.ingestion_status==='active'?'verified':c.ingestion_status==='failed'?'failed':''}">
-    <b>${c.ca_type||'未知'} (${c.connector_id?.slice(0,12)||'?'}...)</b>
+function renderCAConnectionsHTML(ccs) {
+  if (!ccs||ccs.length===0) return '<div style="color:var(--muted);font-size:13px;padding:12px 0;">暂无 CA 连接</div>';
+  return `<div class="ca-grid">${ccs.map(c => `<div class="ca-card ${c.ingestion_status==='active'?'verified':c.ingestion_status==='failed'?'failed':''}">
+    <b>${c.ca_type||'未知'} (${(c.connector_id||'?').slice(0,12)}...)</b>
     <span>状态: <span class="ca-status ${c.ingestion_status==='active'||c.ingestion_status==='connected'?'ok':'err'}">${c.ingestion_status}</span></span>
     <span>真实性: ${c.authenticity_status||'unknown'}</span>
     <span>登记: ${c.registered_at?new Date(c.registered_at).toLocaleString('zh-CN'):'-'}</span>
@@ -636,8 +631,9 @@ async function doCreateWork(regId) {
 
 async function doSubmitWork(workId) {
   try {
-    // For now, just hide it as submitted (API handles status via POST /api/works)
-    showFeedback('ok', '✅ 作品已提交！');
+    // For now, works are created as 'submitted' directly via POST /api/works
+    // This button serves as a visual confirmation for draft→submitted transition
+    showFeedback('ok', '✅ 作品已提交！等待评审。');
     await refreshData();
   } catch(e) { showFeedback('error',`操作失败: ${e.message}`); }
 }
@@ -649,6 +645,7 @@ async function refreshData() {
   const r2 = await fetch('/api/registrations'); App.registrations = await r2.json();
   const r3 = await fetch('/api/race-projects'); App.raceProjects = await r3.json();
   const r4 = await fetch('/api/works'); App.works = await r4.json();
+  const r5 = await fetch('/api/ca-connections'); App.caConnections = await r5.json();
   renderSidebar();
   if (App.currentRace) {
     const updated = App.races.find(r=>r.id===App.currentRace.id);
