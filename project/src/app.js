@@ -493,9 +493,10 @@ function updateProjection(raceProjectId, raceId, registrationId, userId, event) 
   save();
 }
 
-// GET /api/live-hall/:raceId — get live hall data for a race
+// GET /api/live-hall/:raceId — get live hall data for a race (supports both id and slug)
 app.get("/api/live-hall/:raceId", (req, res) => {
-  const race = get("SELECT * FROM races WHERE id = ?", [req.params.raceId]);
+  let race = get("SELECT * FROM races WHERE id = ?", [req.params.raceId]);
+  if (!race) race = get("SELECT * FROM races WHERE slug = ?", [req.params.raceId]);
   if (!race) return res.status(404).json({ error: "赛事不存在" });
 
   const projections = all("SELECT * FROM race_projections WHERE race_id = ? ORDER BY leaderboard_rank ASC", [req.params.raceId]);

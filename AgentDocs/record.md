@@ -191,3 +191,49 @@ PUT             /api/races/:id            — 更新赛事
 | --- | --- |
 | 新 API 部署后 Console 请求 404 | 重启服务器即可 |
 | 评委用户侧边栏无赛事 | 增加 `isJudge` 过滤逻辑 |
+
+## 2026-06-21 — DEV-5 + DEV-6 + DEV-7 完成
+
+### 新增功能
+
+| 任务 | 功能 | 说明 |
+| --- | --- | --- |
+| **DEV-5** | CA 消息接入 | `POST /api/ca/message` 接收骑行信号，自动验签+存储+投影 |
+| **DEV-5** | Projection 引擎 | 自动聚合 tokens/进度/Sessions，风险检测，实时排行 |
+| **DEV-5** | Live Hall | `/live-hall?raceId=X` 深色主题实况页，骑手卡片+指标+事件流 |
+| **DEV-5** | Session 管理 | `POST/GET /api/sessions` 创建和查询骑行会话 |
+| **DEV-6** | Screen Console | `/screen` 大屏控制台，5种模式切换+全屏+10秒轮询 |
+| **DEV-6** | Jumbotron/Billboard/Live | 三种大屏展示模式，适合现场/课堂/直播 |
+| **DEV-6** | 榜单/作品展示 | Leaderboard 排名表 + Works 展示模式 |
+| **DEV-7** | Report 生成器 | `POST /api/reports/generate` 三种报告类型 |
+| **DEV-7** | 赛事报告 | race_report — 赛事统计+获奖名单 |
+| **DEV-7** | 骑行报告 | rider_report — 选手成绩+指标+奖项 |
+| **DEV-7** | 评审总结 | review_summary — 评审结果+获奖理由 |
+
+### 新增页面
+
+| 页面 | 路径 | 说明 |
+| --- | --- | --- |
+| Live Hall | `/live-hall?raceId=X` | 深色主题赛事实况 |
+| Screen Console | `/screen` | 大屏控制台（5种模式） |
+
+### 新增 API（12 个）
+
+```
+POST /api/ca/message           — 接收骑行信号
+GET  /api/ca/messages          — 查询消息
+GET  /api/live-hall/:raceId    — 实况投影数据
+GET  /api/projections/:rpId    — 选手投影
+POST /api/sessions             — 创建Session
+GET  /api/sessions             — 查询Session
+POST /api/reports/generate     — 生成报告
+GET  /api/reports              — 查询报告
+PUT  /api/reports/:id/publish  — 发布报告
+```
+
+### 兼容性检查
+
+| 维度 | 结果 |
+| --- | --- |
+| DEV-1 测试 46 条 | ✅ 全部通过 |
+| 无破坏性变更 | ✅ 所有现有 API 和页面正常 |
