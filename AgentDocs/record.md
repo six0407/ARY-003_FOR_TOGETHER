@@ -266,3 +266,35 @@ PUT  /api/reports/:id/publish  — 发布报告
 | npm test 46 条 | ✅ 全部通过 |
 | 所有页面正常加载 | ✅ 已验证 |
 | 导航无断裂 | ✅ 全部互链 |
+
+## 2026-06-21 — REL-1 + OPS-1 实现完成
+
+### 背景
+基于 REL-1（赛事彩排/灰度发布/正式发布）和 OPS-1（赛事值守/回滚/赛后归档）任务定义，完成运维基础设施实现。
+
+### 新增
+
+| 文件 | 说明 |
+| --- | --- |
+| `project/deploy.sh` | 一键部署脚本：创建目录 → 安装依赖 → 回归测试 → 启动服务（支持 PM2 / nohup） |
+| `project/backup.sh` | 数据备份脚本：full（全量）、data（数据）、archive（赛后归档）、restore（恢复）四种模式 |
+| `project/health-check.sh` | 健康检查脚本：检测 10 个端点的 HTTP 可达性 |
+| `project/OPS_CHECKLIST.md` | 操作检查清单（Runbook）：赛前准备/赛中值守/应急响应/回滚/赛后归档全流程 |
+| `project/logs/.gitkeep` | 日志目录占位 |
+| `project/db/.gitkeep` | 数据目录占位 |
+
+### 后端新增
+
+| 端点 | 方法 | 说明 |
+| --- | --- | --- |
+| `/api/health` | GET | 健康检查：返回 status/uptime/timestamp + 数据库统计（记录数 + 文件大小） |
+
+### 设计文档
+
+| 文件 | 说明 |
+| --- | --- |
+| `AgentDocs/devTask/rel1-ops1-design.md` | REL-1 + OPS-1 设计方案 |
+
+### 状态更新
+- `STATUS.md`：REL-1 ✅ 完成、OPS-1 ✅ 完成
+- `PLAN.md`：近期待更新

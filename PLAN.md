@@ -18,6 +18,8 @@
 | `UX-1` UX/UI 高保真原型与设计基线 | 已完成收口：页面级标注产物、`State Samples` 样张页、网页端与移动端单态证据、正式收口记录与 `M2` 输入最终清单均已形成。 | `docs/ux-1-closure-delivery.md`、`docs/m2-input-final-checklist.md`、`docs/ux-1-annotation-matrix.md`、`design-prototype/index.html` |
 | `DEV-1` 领域模型 + 权限 + 数据模型 | 已启动：第一批正式产物已形成，当前已落下聚合边界、存储边界和接口鉴权规则基线；下一步进入字段级数据模型和接口草案。 | `docs/dev-1-architecture-baseline.md`、`docs/dev-1-delivery.md`、`docs/m2-input-final-checklist.md` |
 | `DEV-5` CA 接入 / Projection / Live Hall | 已按新口径整改 CA 原始骑行状态消息草案：CAConnection 可在参赛过程中登记和握手，合法连接数据进入证据链，接入异常进入评审前风险提示；继续收敛投影规则、字段必填性、push / fetch 边界和幂等规则。 | `docs/ary-ca-integration-spec.md` |
+| `REL-1` 赛事彩排 / 灰度发布 / 正式发布 | ✅ 已完成：部署脚本 deploy.sh、健康检查 API、健康检查脚本 health-check.sh 已实现。 | `project/deploy.sh`、`project/health-check.sh` |
+| `OPS-1` 赛事值守 / 回滚 / 赛后归档 | ✅ 已完成：备份脚本 backup.sh、操作检查清单 OPS_CHECKLIST.md 已实现。 | `project/backup.sh`、`project/OPS_CHECKLIST.md` |
 
 ## 近期里程碑
 
@@ -28,10 +30,11 @@
 
 ## 下一步
 
-1. 以 `docs/dev-1-architecture-baseline.md` 和 `docs/dev-1-delivery.md` 为当前入口，继续把 DEV-1 推进到字段级数据模型草案和接口鉴权策略表。
-2. 后续高保真页面新增或整改时，使用 `.agents/skills/hifi-ui-page-workflow/SKILL.md`，先确认 IA 合约、数据面和已通过页面惯例，再进入页面实现和浏览器复审。
-3. `DEV-1` 不再因 `UX-1` 缺少页面、样张或截图证据而暂缓；若后续新增页面，只视为增量优化，不回退当前 `M2` 入口判断。
-4. 在后续正式 Race Rules / `DEV-5` 中继续细化提交准入边界、CAConnection 新增窗口和违规作品处理，不再回退已完成的 PRD 基线口径。
+1. ✅ REL-1 + OPS-1 已完成，MVP 所有核心任务已实现。
+2. 后续工作方向：
+   - 赛事彩排验证（按 OPS_CHECKLIST.md 执行）
+   - 各页面的微调和 bug 修复
+   - 准备 M3 交付评审
 
 ## 执行纪律
 

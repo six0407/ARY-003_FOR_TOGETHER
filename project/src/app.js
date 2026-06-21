@@ -730,6 +730,25 @@ app.put("/api/awards/:id", (req, res) => {
 
 // ==================== DEV-7: Report Generator ====================
 
+// GET /api/health — health check endpoint
+app.get("/api/health", async (_req, res) => {
+  try {
+    const raceCount = all("SELECT COUNT(*) as count FROM races")[0]?.count || 0;
+    const userCount = all("SELECT COUNT(*) as count FROM users")[0]?.count || 0;
+    const dbPath = process.env.DB_PATH || "db/ary.sqlite";
+    const fs = await import("node:fs");
+    const dbStats = fs.existsSync(dbPath) ? fs.statSync(dbPath) : null;
+    res.json({
+      status: "ok",
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+      db: { sizeBytes: dbStats?.size || 0, races: raceCount, users: userCount },
+    });
+  } catch (e) {
+    res.status(500).json({ status: "error", message: e.message });
+  }
+});
+
 // POST /api/reports/generate — generate a report for a race
 app.post("/api/reports/generate", (req, res) => {
   const { raceId, reportType, subjectRegistrationId } = req.body;

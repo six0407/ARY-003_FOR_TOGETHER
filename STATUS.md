@@ -27,8 +27,8 @@
 | `UX-1` UX/UI 高保真原型与设计基线 | 完成 | 已形成正式收口记录与 `M2` 输入最终清单；Public、Console、Screen 三类体验面、状态样张、桌面端 / 移动端 / 单态证据均已纳入同一交付链。 | `docs/ux-1-closure-delivery.md`、`docs/m2-input-final-checklist.md`、`docs/ux-1-annotation-matrix.md`、`design-prototype/index.html` |
 | `DEV-1` 领域模型 + 权限 + 数据模型 | 进行中 | 六类核心产物已形成，验收用例已在 `project/` 下通过 46 条可运行代码验证；下一步进入读模型刷新策略和审计操作流程图。 | `project/`、`docs/dev-1-architecture-baseline.md`、`docs/dev-1-data-model-draft.md`、`docs/dev-1-auth-policy.md`、`docs/dev-1-state-transitions.md`、`docs/dev-1-acceptance-tests.md` |
 | `DEV-5` CA 接入 / Projection / Live Hall | 细化中 | 已将 CA 作为 Agent Race 工具、比赛信号源和评审参考的口径落盘；CAConnection 可在参赛过程中登记和握手，合法连接数据进入证据链，接入异常进入评审前风险提示；`task_progress` 仅用于 unblock / 说明，不做定期推送，且不设 `session_progress` push。 | `docs/ary-ca-integration-spec.md` |
-| `REL-1` 赛事彩排 / 灰度发布 / 正式发布 | 待开始 | 等待开发任务和验收证据完成。 | `docs/ary-release-ops-plan.md` |
-| `OPS-1` 赛事值守 / 回滚 / 赛后归档 | 待开始 | 等待发布方案和赛事执行计划明确。 | `docs/ary-release-ops-plan.md` |
+| `REL-1` 赛事彩排 / 灰度发布 / 正式发布 | ✅ 完成 | 部署脚本 deploy.sh、健康检查 API /api/health、健康检查脚本 health-check.sh 已实现。 | `project/deploy.sh`、`project/health-check.sh`、`project/src/app.js` |
+| `OPS-1` 赛事值守 / 回滚 / 赛后归档 | ✅ 完成 | 备份脚本 backup.sh、操作检查清单 OPS_CHECKLIST.md 已实现。 | `project/backup.sh`、`project/OPS_CHECKLIST.md` |
 
 ## 证据索引
 
