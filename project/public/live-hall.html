@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Live Hall — ARY</title>
+  <link rel="stylesheet" href="/app.css" />
+  <style>
+    .lh-shell { position:absolute;inset:0;display:flex;flex-direction:column;background:#0f172a;color:#e2e8f0; }
+    .lh-header { display:flex;align-items:center;justify-content:space-between;padding:10px 24px;background:#1e293b;border-bottom:1px solid #334155; }
+    .lh-header .brand { display:flex;align-items:center;gap:10px;color:#e2e8f0;text-decoration:none;font-weight:950;font-size:16px; }
+    .lh-header .brand img { height:24px; }
+    .lh-header .live-dot { display:inline-block;width:10px;height:10px;border-radius:50%;background:#22c55e;margin-right:6px;animation:pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    .lh-header .nav-links a { color:#94a3b8;text-decoration:none;font-size:13px;font-weight:700;margin-left:16px; }
+    .lh-header .nav-links a:hover { color:#e2e8f0; }
+
+    .lh-body { flex:1;display:flex;overflow:hidden; }
+    .lh-main { flex:1;padding:20px 24px;overflow-y:auto; }
+    .lh-sidebar { width:340px;background:#1e293b;border-left:1px solid #334155;display:flex;flex-direction:column; }
+
+    .lh-title { font-size:20px;font-weight:950;margin-bottom:4px;display:flex;align-items:center;gap:10px; }
+    .lh-title small { font-size:13px;font-weight:400;color:#94a3b8; }
+    .lh-subtitle { font-size:13px;color:#94a3b8;margin-bottom:20px; }
+
+    .rider-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px; }
+    .rider-card { background:#1e293b;border:1px solid #334155;border-radius:12px;padding:16px;transition:all 0.2s; }
+    .rider-card:hover { border-color:#3b82f6; }
+    .rider-card .top { display:flex;justify-content:space-between;align-items:center;margin-bottom:8px; }
+    .rider-card .name { font-size:16px;font-weight:950;color:#f1f5f9; }
+    .rider-card .rank-badge { background:#3b82f6;color:#fff;padding:2px 10px;border-radius:6px;font-size:11px;font-weight:900; }
+    .rider-card .status-row { display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap; }
+    .rider-card .status-tag { padding:3px 10px;border-radius:6px;font-size:11px;font-weight:900; }
+    .rider-card .status-tag.active { background:#22c55e;color:#052e16; }
+    .rider-card .status-tag.connected { background:#3b82f6;color:#1e3a5f; }
+    .rider-card .status-tag.failed { background:#ef4444;color:#450a0a; }
+    .rider-card .status-tag.risk { background:#f59e0b;color:#451a03; }
+    .rider-card .metrics { display:grid;grid-template-columns:1fr 1fr;gap:6px; }
+    .rider-card .metric { background:#0f172a;border-radius:8px;padding:8px 10px;text-align:center; }
+    .rider-card .metric .val { font-size:18px;font-weight:950;color:#f1f5f9; }
+    .rider-card .metric .lbl { font-size:10px;color:#94a3b8;font-weight:700;text-transform:uppercase;margin-top:2px; }
+    .rider-card .progress-bar { margin-top:8px;height:4px;background:#334155;border-radius:2px;overflow:hidden; }
+    .rider-card .progress-bar .fill { height:100%;background:linear-gradient(90deg,#3b82f6,#22c55e);border-radius:2px;transition:width 0.5s; }
+
+    .event-stream { flex:1;overflow-y:auto;padding:16px; }
+    .event-stream h3 { font-size:12px;font-weight:950;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px; }
+    .event-item { padding:8px 0;border-bottom:1px solid #334155;font-size:12px; }
+    .event-item .time { color:#64748b;font-weight:700; }
+    .event-item .rider { color:#3b82f6;font-weight:700; }
+    .event-item .type { color:#22c55e;font-weight:700; }
+    .event-item .desc { color:#94a3b8; }
+
+    .empty-state { text-align:center;padding:60px 20px;color:#94a3b8;font-size:15px;line-height:1.6; }
+    .empty-state button { margin-top:12px;min-height:36px;padding:0 20px;border:1px solid #334155;border-radius:10px;background:#1e293b;color:#3b82f6;font-size:13px;font-weight:900;cursor:pointer; }
+
+    @media (max-width:1024px) { .lh-sidebar { display:none; } }
+  </style>
+</head>
+<body>
+<div class="lh-shell">
+  <header class="lh-header">
+    <a class="brand" href="/console">
+      <img src="./assets/logo-horse-compass-transparent.png" alt="" />
+      <span>ARY <span class="live-dot"></span> Live Hall</span>
+    </a>
+    <div class="nav-links">
+      <a href="/console">← Console</a>
+      <a href="/">Public</a>
+    </div>
+  </header>
+
+  <div class="lh-body">
+    <div class="lh-main" id="lh-main">
+      <div class="empty-state">加载中...</div>
+    </div>
+    <div class="lh-sidebar">
+      <div class="event-stream" id="event-stream">
+        <h3>📡 骑行事件流</h3>
+        <div style="color:#94a3b8;font-size:13px;">等待数据...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let pollTimer = null;
+  const raceId = new URLSearchParams(location.search).get('raceId');
+
+  async function loadLiveHall() {
+    if (!raceId) {
+      document.getElementById('lh-main').innerHTML = '<div class="empty-state">请指定赛事 ID<br><a href="/console" style="color:#3b82f6;">返回 Console</a></div>';
+      return;
+    }
+    try {
+      const res = await fetch(`/api/live-hall/${raceId}`);
+      if (!res.ok) throw new Error('Not found');
+      const data = await res.json();
+      renderLiveHall(data);
+    } catch(e) {
+      document.getElementById('lh-main').innerHTML = `<div class="empty-state">无法加载实况数据<br><small>${e.message}</small></div>`;
+    }
+  }
+
+  function renderLiveHall(data) {
+    const { race, projections, recentEvents } = data;
+
+    // Main content
+    document.getElementById('lh-main').innerHTML = `
+      <div class="lh-title">🏁 ${race.title} <small>${race.status === 'running' ? '🔴 直播中' : statusLabel(race.status)}</small></div>
+      <div class="lh-subtitle">👥 ${projections.length} 位骑手 · 📡 ${recentEvents.length} 条最新事件</div>
+      ${projections.length === 0
+        ? '<div class="empty-state">暂无骑手数据<br><small>等待 CA 信号接入...</small></div>'
+        : `<div class="rider-grid">${projections.map((p,i) => {
+          const m = p.metrics || {};
+          const risks = p.risks || [];
+          const conn = p.connection || {};
+          return `<div class="rider-card">
+            <div class="top">
+              <span class="name">${p.rider_name || '骑手 ' + (i+1)}</span>
+              <span class="rank-badge">#${p.leaderboard_rank || i+1}</span>
+            </div>
+            <div class="status-row">
+              <span class="status-tag ${conn.ingestion_status === 'active' ? 'active' : conn.ingestion_status === 'connected' ? 'connected' : 'failed'}">${conn.ingestion_status || 'unknown'}</span>
+              ${risks.map(r => `<span class="status-tag risk">⚠ ${r}</span>`).join('')}
+            </div>
+            <div class="progress-bar"><div class="fill" style="width:${m.progressPercent||0}%"></div></div>
+            <div class="metrics" style="margin-top:8px;">
+              <div class="metric"><div class="val">${m.progressPercent||0}%</div><div class="lbl">进度</div></div>
+              <div class="metric"><div class="val">${Math.round((m.tokensUsed||0)/1000)}k</div><div class="lbl">Token</div></div>
+              <div class="metric"><div class="val">${m.sessionsCount||0}</div><div class="lbl">Sessions</div></div>
+              <div class="metric"><div class="val">${m.phase||'idle'}</div><div class="lbl">状态</div></div>
+            </div>
+            ${p.latest_event_summary ? `<div style="margin-top:8px;font-size:11px;color:#94a3b8;">📌 ${p.latest_event_summary.slice(0,80)}</div>` : ''}
+          </div>`;
+        }).join('')}</div>`
+      }
+    `;
+
+    // Event stream
+    const eventList = document.getElementById('event-stream');
+    if (eventList) {
+      eventList.innerHTML = `<h3>📡 骑行事件流</h3>
+        ${recentEvents.length === 0
+          ? '<div style="color:#94a3b8;font-size:13px;">暂无事件</div>'
+          : recentEvents.map(e => `
+            <div class="event-item">
+              <span class="time">${e.time}</span>
+              <span class="rider">${e.rider_name}</span>
+              <span class="type">${e.signal_type}</span>
+              <div class="desc">${(e.content||'').slice(0,100)}</div>
+            </div>
+          `).join('')}
+      `;
+    }
+  }
+
+  function statusLabel(s) {
+    const map = { draft:'草稿', published:'已发布', registration:'报名中', running:'进行中', submitting:'提交期', judging:'评审中', completed:'已结束' };
+    return map[s]||s;
+  }
+
+  // Auto-refresh every 10 seconds
+  loadLiveHall();
+  if (raceId) { pollTimer = setInterval(loadLiveHall, 10000); }
+</script>
+</body>
+</html>

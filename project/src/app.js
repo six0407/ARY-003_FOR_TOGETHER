@@ -24,6 +24,9 @@ app.get("/console", (_req, res) => res.sendFile(path.join(publicDir, "console.ht
 // Admin → admin console
 app.get("/admin", (_req, res) => res.sendFile(path.join(publicDir, "admin.html")));
 
+// Live Hall → real-time race display
+app.get("/live-hall", (_req, res) => res.sendFile(path.join(publicDir, "live-hall.html")));
+
 // Static files (after explicit routes)
 app.use(express.static(publicDir));
 
@@ -391,12 +394,10 @@ app.post("/api/ca-connections", (req, res) => {
   }
 });
 
-// POST /api/ca-verify — CA message verification
+// POST /api/ca-verify — CA message verification (legacy)
 app.post("/api/ca-verify", (req, res) => {
   const { caConnectionId, message } = req.body;
   if (!caConnectionId || !message) return res.status(400).json({ error: "caConnectionId 和 message 必填" });
-
-  // Import the verifier (uses in-memory stores for verification logic)
   import("./ca-verifier.js").then(({ verifyMessage }) => {
     const result = verifyMessage({ ...message, caConnectionId });
     save();
@@ -404,6 +405,167 @@ app.post("/api/ca-verify", (req, res) => {
   }).catch((err) => {
     res.status(500).json({ error: "验签模块加载失败: " + err.message });
   });
+});
+
+// ==================== DEV-5: CA Message Ingestion ====================
+
+// POST /api/ca/message — receive a riding signal message
+app.post("/api/ca/message", (req, res) => {
+  const { caConnectionId, signalType, signalKind, phase, taskStatus, progressPercent, tokensUsed, content } = req.body;
+  if (!caConnectionId) return res.status(400).json({ error: "caConnectionId 必填" });
+
+  const caConn = get("SELECT * FROM ca_connections WHERE id = ?", [caConnectionId]);
+  if (!caConn) return res.status(404).json({ error: "CAConnection 不存在" });
+  if (caConn.disabled_at) return res.status(403).json({ error: "CAConnection 已禁用" });
+
+  const t = now();
+  const id = uid();
+  run(
+    `INSERT INTO ca_messages (id, ca_connection_id, race_project_id, registration_id, race_id, signal_type, signal_kind, phase, task_status, progress_percent, tokens_used, content, received_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, caConnectionId, caConn.race_project_id, caConn.registration_id, caConn.race_id,
+     signalType || "unknown", signalKind || "event", phase || "idle", taskStatus || "not_started",
+     progressPercent || 0, tokensUsed || 0, content || "", t, t],
+  );
+  save();
+
+  // Update projection
+  updateProjection(caConn.race_project_id, caConn.race_id, caConn.registration_id, caConn.user_id, {
+    signalType, progressPercent, tokensUsed, content, phase, taskStatus,
+  });
+
+  res.status(201).json({ id, status: "received" });
+});
+
+// GET /api/ca/messages?raceProjectId=X — query CA messages
+app.get("/api/ca/messages", (req, res) => {
+  const { raceProjectId, limit } = req.query;
+  let sql = "SELECT * FROM ca_messages WHERE 1=1";
+  const params = [];
+  if (raceProjectId) { sql += " AND race_project_id = ?"; params.push(raceProjectId); }
+  sql += " ORDER BY received_at DESC LIMIT " + (parseInt(limit) || 50);
+  res.json(all(sql, params));
+});
+
+// ==================== DEV-5: Projection Engine ====================
+
+function updateProjection(raceProjectId, raceId, registrationId, userId, event) {
+  const existing = get("SELECT * FROM race_projections WHERE race_project_id = ?", [raceProjectId]);
+  const t = now();
+
+  // Calculate metrics from ca_messages
+  const msgs = all("SELECT * FROM ca_messages WHERE race_project_id = ? ORDER BY received_at DESC", [raceProjectId]);
+  const tokensUsed = msgs.reduce((sum, m) => sum + (m.tokens_used || 0), 0);
+  const latestMsg = msgs[0];
+  const progressPercent = latestMsg?.progress_percent || 0;
+  const phase = latestMsg?.phase || "idle";
+
+  // Detect risks
+  const risks = [];
+  if (phase === "blocked") risks.push("任务阻塞");
+  if (tokensUsed > 100000) risks.push("成本过高");
+  const recentMsgs = msgs.filter(m => new Date(m.received_at).getTime() > Date.now() - 30*60*1000);
+  if (recentMsgs.length === 0 && msgs.length > 0) risks.push("长时间无进展");
+
+  // Leaderboard rank: sort by progress
+  const allProjections = all("SELECT * FROM race_projections WHERE race_id = ? ORDER BY json_extract(metrics, '$.progressPercent') DESC", [raceId]);
+  const rank = allProjections.findIndex(p => p.race_project_id === raceProjectId) + 1;
+
+  const metrics = JSON.stringify({ tokensUsed, progressPercent, sessionsCount: msgs.length, phase });
+  const latestEventType = event?.signalType || latestMsg?.signal_type || "";
+  const latestEventSummary = event?.content ? event.content.slice(0, 200) : (latestMsg?.content || "").slice(0, 200);
+
+  if (existing) {
+    run(
+      `UPDATE race_projections SET metrics = ?, risks = ?, latest_event_type = ?, latest_event_summary = ?, latest_event_at = ?, leaderboard_rank = ?, last_updated_at = ?, updated_at = ? WHERE race_project_id = ?`,
+      [metrics, JSON.stringify(risks), latestEventType, latestEventSummary, t, rank, t, t, raceProjectId],
+    );
+  } else {
+    run(
+      `INSERT INTO race_projections (id, race_project_id, race_id, registration_id, user_id, metrics, risks, latest_event_type, latest_event_summary, latest_event_at, leaderboard_rank, last_updated_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [uid(), raceProjectId, raceId, registrationId, userId, metrics, JSON.stringify(risks), latestEventType, latestEventSummary, t, rank, t, t, t],
+    );
+  }
+  save();
+}
+
+// GET /api/live-hall/:raceId — get live hall data for a race
+app.get("/api/live-hall/:raceId", (req, res) => {
+  const race = get("SELECT * FROM races WHERE id = ?", [req.params.raceId]);
+  if (!race) return res.status(404).json({ error: "赛事不存在" });
+
+  const projections = all("SELECT * FROM race_projections WHERE race_id = ? ORDER BY leaderboard_rank ASC", [req.params.raceId]);
+  const recentEvents = all(
+    "SELECT cm.*, u.display_name as rider_name FROM ca_messages cm JOIN users u ON (SELECT user_id FROM race_projects WHERE id = cm.race_project_id) = u.id WHERE cm.race_id = ? ORDER BY cm.received_at DESC LIMIT 20",
+    [req.params.raceId],
+  );
+
+  // Get CA connection statuses
+  const raceProjectIds = projections.map(p => p.race_project_id);
+  const connStatuses = raceProjectIds.length > 0
+    ? all(`SELECT race_project_id, ingestion_status, authenticity_status FROM ca_connections WHERE race_project_id IN (${raceProjectIds.map(() => '?').join(',')})`, raceProjectIds)
+    : [];
+
+  res.json({
+    race: { id: race.id, title: race.title, slug: race.slug, status: race.status },
+    projections: projections.map(p => ({
+      ...p,
+      metrics: JSON.parse(p.metrics || "{}"),
+      risks: JSON.parse(p.risks || "[]"),
+      connection: connStatuses.find(c => c.race_project_id === p.race_project_id) || {},
+    })),
+    recentEvents: recentEvents.map(e => ({
+      ...e,
+      rider_name: e.rider_name || "未知",
+      time: new Date(e.received_at).toLocaleTimeString('zh-CN'),
+    })),
+  });
+});
+
+// GET /api/projections/:raceProjectId — individual projection
+app.get("/api/projections/:raceProjectId", (req, res) => {
+  const p = get("SELECT * FROM race_projections WHERE race_project_id = ?", [req.params.raceProjectId]);
+  if (!p) return res.status(404).json({ error: "Projection 不存在" });
+  res.json({ ...p, metrics: JSON.parse(p.metrics || "{}"), risks: JSON.parse(p.risks || "[]") });
+});
+
+// ==================== DEV-5: Session Management ====================
+
+// POST /api/sessions — create a new session for a CA connection
+app.post("/api/sessions", (req, res) => {
+  const { caConnectionId, caSessionId } = req.body;
+  if (!caConnectionId || !caSessionId) return res.status(400).json({ error: "caConnectionId 和 caSessionId 必填" });
+
+  const caConn = get("SELECT * FROM ca_connections WHERE id = ?", [caConnectionId]);
+  if (!caConn) return res.status(404).json({ error: "CAConnection 不存在" });
+
+  const t = now();
+  const id = uid();
+  try {
+    run(
+      `INSERT INTO sessions (id, ca_connection_id, race_project_id, registration_id, ca_session_id, status, started_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+      [id, caConnectionId, caConn.race_project_id, caConn.registration_id, caSessionId, t, t, t],
+    );
+    // Update CA connection status to active
+    update("ca_connections", caConnectionId, { ingestion_status: "active", last_handshake_at: t, updated_at: t });
+    save();
+    res.status(201).json({ id, status: "active" });
+  } catch (e) {
+    res.status(409).json({ error: "Session 创建失败: " + e.message });
+  }
+});
+
+// GET /api/sessions?raceProjectId=X — list sessions
+app.get("/api/sessions", (req, res) => {
+  const { raceProjectId, caConnectionId } = req.query;
+  let sql = "SELECT * FROM sessions WHERE 1=1";
+  const params = [];
+  if (raceProjectId) { sql += " AND race_project_id = ?"; params.push(raceProjectId); }
+  if (caConnectionId) { sql += " AND ca_connection_id = ?"; params.push(caConnectionId); }
+  sql += " ORDER BY started_at DESC";
+  res.json(all(sql, params).map(s => ({ ...s, metrics: JSON.parse(s.metrics || "{}") })));
 });
 
 // ==================== RaceProject Routes ====================

@@ -412,6 +412,50 @@ function runMigrations() {
     )
   `);
 
+  // DEV-5: CA raw messages table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS ca_messages (
+      id TEXT PRIMARY KEY,
+      ca_connection_id TEXT NOT NULL,
+      race_project_id TEXT NOT NULL,
+      registration_id TEXT NOT NULL,
+      race_id TEXT NOT NULL,
+      signal_type TEXT NOT NULL,
+      signal_kind TEXT DEFAULT 'event',
+      phase TEXT DEFAULT 'idle',
+      task_status TEXT DEFAULT 'not_started',
+      progress_percent REAL DEFAULT 0,
+      tokens_used INTEGER DEFAULT 0,
+      session_count INTEGER DEFAULT 0,
+      message_count INTEGER DEFAULT 0,
+      tool_call_count INTEGER DEFAULT 0,
+      content TEXT DEFAULT '',
+      received_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(ca_connection_id, id)
+    )
+  `);
+
+  // DEV-5: Projections table for Live Hall
+  db.run(`
+    CREATE TABLE IF NOT EXISTS race_projections (
+      id TEXT PRIMARY KEY,
+      race_project_id TEXT UNIQUE NOT NULL,
+      race_id TEXT NOT NULL,
+      registration_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      metrics TEXT DEFAULT '{}',
+      risks TEXT DEFAULT '[]',
+      latest_event_type TEXT DEFAULT '',
+      latest_event_summary TEXT DEFAULT '',
+      latest_event_at TEXT,
+      leaderboard_rank INTEGER DEFAULT 0,
+      last_updated_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
   save();
   console.log("[db] Migrations complete, database ready.");
 }
