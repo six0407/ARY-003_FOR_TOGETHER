@@ -6,14 +6,15 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test test/acceptance.test.js",
-    "test:dev1": "node --test test/acceptance.test.js"
+    "test:api": "node --test test/api.test.js",
+    "test:all": "node --test test/acceptance.test.js test/api.test.js"
   },
   "engines": {
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "body-parser": "^2.3.0",
     "cors": "^2.8.6",
+    "dotenv": "^16.4.7",
     "express": "^5.2.1",
     "sql.js": "^1.14.1"
   }

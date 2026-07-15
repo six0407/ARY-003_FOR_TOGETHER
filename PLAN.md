@@ -2,38 +2,73 @@
 
 本文是 ARY 近期任务窗口，记录近期要推进的任务和里程碑。长期任务定义见 `docs/ary.plan.md`；任务瞬时状态见 `STATUS.md`。
 
-## 近期窗口
+## 当前阶段
 
-| 窗口 | 目标 |
-| --- | --- |
-| UX 高保真原型评审 | `UX-1` 已完成收口，当前目标转为把已确认的设计输入消费进 `M2` / `DEV-1` 架构设计。 |
-| 报名 / CA 参赛语义整改 | 确认 Registration approved 自动生成 RaceProject、CAConnection 参赛中动态接入、CA 接入状态不再作为参赛资格硬门禁，并完成文档一致性整改。 |
+003 最终提交已全部完成（PRD-1 / UX-1 / DEV-1~7 / REL-1 / OPS-1 ✅）。当前等待进入 **004**（在 003 代码基础上优化升级）。
 
-## 近期任务
+## 003 交付物总览
 
-| 任务 | 目标 | 下一入口 |
+| 层面 | 内容 | 状态 |
 | --- | --- | --- |
-| `PRD-1` 文档基线与范围确认 | 已完成首轮文档一致性检查并确认可作为架构入口；`PRD-TEMP-1` 复审结论已并入基线。 | `docs/prd-temp-1-baseline-delivery.md` |
-| `PRD-TEMP-1` 报名 / RaceProject / CA 参赛语义整改 | 已完成复审并建议并入 `PRD-1` 基线：PRD、领域、CA 契约、IA、UX / 高保真原型、权限、QA、OPS 和计划文档已同步新口径，术语已统一为 `Review Flag` / `Review Flag Check`。 | `docs/registration-ca-rules-alignment.taskbook.md` |
-| `UX-1` UX/UI 高保真原型与设计基线 | 已完成收口：页面级标注产物、`State Samples` 样张页、网页端与移动端单态证据、正式收口记录与 `M2` 输入最终清单均已形成。 | `docs/ux-1-closure-delivery.md`、`docs/m2-input-final-checklist.md`、`docs/ux-1-annotation-matrix.md`、`design-prototype/index.html` |
-| `DEV-1` 领域模型 + 权限 + 数据模型 | 已启动：第一批正式产物已形成，当前已落下聚合边界、存储边界和接口鉴权规则基线；下一步进入字段级数据模型和接口草案。 | `docs/dev-1-architecture-baseline.md`、`docs/dev-1-delivery.md`、`docs/m2-input-final-checklist.md` |
-| `DEV-5` CA 接入 / Projection / Live Hall | 已按新口径整改 CA 原始骑行状态消息草案：CAConnection 可在参赛过程中登记和握手，合法连接数据进入证据链，接入异常进入评审前风险提示；继续收敛投影规则、字段必填性、push / fetch 边界和幂等规则。 | `docs/ary-ca-integration-spec.md` |
+| **文档基线** | PRD、领域模型、IA、权限矩阵、QA Plan、Release & Ops Plan | ✅ |
+| **高保真原型** | 16 个页面 + 状态样张 + 桌面/移动端截图证据 | ✅ |
+| **后端 API** | Express 5 + SQLite，45 个端点 | ✅ |
+| **前端页面** | 15 个 HTML 页面（Public Site + Console + Admin + Live Hall + Screen） | ✅ |
+| **架构验证** | 46 条验收测试全绿（AC-1~AC-5 + 状态机 + 鉴权） | ✅ |
+| **运维脚本** | deploy.sh / backup.sh / health-check.sh / OPS_CHECKLIST.md | ✅ |
+
+## 004 待办方向
+
+根据 `AgentDocs/03-open-questions.md` 和 `AgentDocs/01-ary-project-analysis.md` 的 DoD 标准，004 预期在以下方向进行优化：
+
+### 技术升级
+
+| 方向 | 003 现状 | 004 目标（待决策） |
+| --- | --- | --- |
+| **前端框架** | 原生 HTML/CSS/JS | React/Vue 组件化，对齐高保真原型 |
+| **后端框架** | Express 5 + SQLite | 评估 NestJS/Spring Boot |
+| **数据库** | SQLite（sql.js 内存加载） | 评估 PostgreSQL + Redis |
+| **实时通讯** | HTTP 轮询（10 秒） | 评估 WebSocket 长连接 |
+| **登录鉴权** | Demo 模式（免密选用户） | 真实 GitHub OAuth |
+
+### 功能完善
+
+| 方向 | 003 现状 | 004 目标 |
+| --- | --- | --- |
+| **DCR 验签** | 代码框架已有，算法待确认 | 与老师确认后正式实现 |
+| **CA 密钥展示** | 基础实现 | 决定策略（只显示一次 vs 随时查看） |
+| **验签失败展示** | 无 | Judge 视角打红标或独立 Risk Audit 面板 |
+| **Rider Profile** | 基础页面 | 完善骑手能力档案 |
+| **前端还原度** | 基本还原 | 全面提升至高保真原型标准 |
+
+### 工程化
+
+| 方向 | 003 现状 | 004 目标 |
+| --- | --- | --- |
+| **测试覆盖** | 46 条架构层测试 | 补充 API 集成测试 + 前端 E2E |
+| **错误处理** | 基础 try-catch | 统一错误码 + 全局异常处理 |
+| **日志系统** | console.log | 结构化日志 |
+| **CI/CD** | 无 | 评估 GitHub Actions |
 
 ## 近期里程碑
 
 | 里程碑 | 完成口径 |
 | --- | --- |
-| `M1` 文档基线可作为架构入口 | 已满足：PRD、领域、IA、权限、QA、计划、OPS、CA 草案无高优先级冲突。 |
-| `M2` 架构设计输入就绪 | 已满足：`UX-1` 收口记录与 `M2` 输入最终清单已形成，页面边界、权限规则、状态模型和关键证据可直接消费。 |
+| `M1` 文档基线可作为架构入口 | ✅ 已满足（003） |
+| `M2` 架构设计输入就绪 | ✅ 已满足（003） |
+| `M3` 003 全部任务完成 | ✅ 已满足（2026-06-21） |
+| `M4` 004 技术选型决策完成 | 待团队对齐 `03-open-questions.md` |
 
 ## 下一步
 
-1. 以 `docs/dev-1-architecture-baseline.md` 和 `docs/dev-1-delivery.md` 为当前入口，继续把 DEV-1 推进到字段级数据模型草案和接口鉴权策略表。
-2. 后续高保真页面新增或整改时，使用 `.agents/skills/hifi-ui-page-workflow/SKILL.md`，先确认 IA 合约、数据面和已通过页面惯例，再进入页面实现和浏览器复审。
-3. `DEV-1` 不再因 `UX-1` 缺少页面、样张或截图证据而暂缓；若后续新增页面，只视为增量优化，不回退当前 `M2` 入口判断。
-4. 在后续正式 Race Rules / `DEV-5` 中继续细化提交准入边界、CAConnection 新增窗口和违规作品处理，不再回退已完成的 PRD 基线口径。
+1. **必做**：团队阅读 `AgentDocs/03-open-questions.md`，开会敲定 004 的技术选型和分工。
+2. **必做**：查看 GitHub Classroom 作业链接（README.md 顶部）确认 004 的具体要求和截止日期。
+3. **建议**：确认 DCR 验签算法细节（与老师/助教沟通）。
+4. **建议**：以 `AgentDocs/02-ary-global-design.md` 中的目标架构为蓝图，按优先级逐项升级。
 
 ## 执行纪律
 
 * 开工前读取对应任务在 `docs/ary.plan.md` 中的定义。
 * 近期窗口变化时更新本文；任务状态变化时更新 `STATUS.md`。
+* 实施前确认目标、产出、验收口径和不做事项。
+* 重要结论必须能追溯到用户指令、仓库文件或验证结果。

@@ -1,12 +1,23 @@
 // Express API server — the real application backbone.
-// Replaces the static-only server.js. Connects sql.js DB, mounts REST routes,
-// serves the public/ directory as static frontend.
+// 004 upgrade: unified error handling, auth middleware, state-machine enforcement,
+// structured logging, and centralized config.
 
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import path from "node:path";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { initDB, seedDemo, all, get, run, insert, update, save, uid, now } from "./db.js";
+import { config } from "./config.js";
+import { logger } from "./logger.js";
+import { ok, list, created, fail, notFound, badRequest, unauthorized, forbidden, conflictErr, internalError } from "./response.js";
+import { required, oneOf, firstError } from "./validate.js";
+import { AppError, errorHandler } from "./middleware/error-handler.js";
+import { requireAuth, requireRole } from "./middleware/auth-guard.js";
+import {
+  raceCanTransition, registrationCanTransition, awardCanTransition,
+} from "./state-machine.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "..", "public");
@@ -44,10 +55,11 @@ app.use(express.static(publicDir));
 // POST /api/auth/login — demo login (returns user + token placeholder)
 app.post("/api/auth/login", (req, res) => {
   const { githubAccountId } = req.body;
+  if (!githubAccountId) return badRequest(res, "githubAccountId 必填");
+
   const user = get("SELECT * FROM users WHERE github_account_id = ?", [githubAccountId]);
-  if (!user) {
-    return res.status(404).json({ error: "用户不存在" });
-  }
+  if (!user) return notFound(res, "用户");
+
   // Parse JSON fields
   user.roles = JSON.parse(user.roles || "[]");
   user.profile = JSON.parse(user.profile || "{}");
@@ -63,24 +75,24 @@ app.get("/api/auth/users", (_req, res) => {
 // GET /api/users/me — current user detail (by demo token)
 app.get("/api/users/me", (req, res) => {
   const token = req.headers.authorization?.replace("Bearer demo-token-", "");
-  if (!token) return res.status(401).json({ error: "未登录" });
+  if (!token) return unauthorized(res);
   const user = get("SELECT * FROM users WHERE id = ?", [token]);
-  if (!user) return res.status(404).json({ error: "用户不存在" });
+  if (!user) return notFound(res, "用户");
   res.json(parseUser(user));
 });
 
 // PUT /api/auth/users/:id/roles — update user roles (admin only)
-app.put("/api/auth/users/:id/roles", (req, res) => {
+app.put("/api/auth/users/:id/roles", requireAuth, requireRole("admin"), (req, res) => {
   const { id } = req.params;
   const { roles } = req.body;
-  if (!Array.isArray(roles)) return res.status(400).json({ error: "roles 必须是数组" });
+  if (!Array.isArray(roles)) return badRequest(res, "roles 必须是数组");
 
   const user = get("SELECT * FROM users WHERE id = ?", [id]);
-  if (!user) return res.status(404).json({ error: "用户不存在" });
+  if (!user) return notFound(res, "用户");
 
   const validRoles = ["rider", "judge", "organizer", "admin"];
   const invalid = roles.filter((r) => !validRoles.includes(r));
-  if (invalid.length > 0) return res.status(400).json({ error: `无效角色: ${invalid.join(", ")}` });
+  if (invalid.length > 0) return badRequest(res, `无效角色: ${invalid.join(", ")}`);
 
   update("users", id, { roles: JSON.stringify(roles), updated_at: now() });
   save();
@@ -98,7 +110,6 @@ app.get("/api/races", (_req, res) => {
       time_windows: JSON.parse(r.time_windows || "{}"),
       award_settings: JSON.parse(r.award_settings || "[]"),
       organizer_user_ids: JSON.parse(r.organizer_user_ids || "[]"),
-      // Count registrations
       registration_count: all(
         "SELECT COUNT(*) as count FROM registrations WHERE race_id = ?",
         [r.id],
@@ -108,9 +119,9 @@ app.get("/api/races", (_req, res) => {
 });
 
 // POST /api/races — create a new race (organizer only)
-app.post("/api/races", (req, res) => {
+app.post("/api/races", requireAuth, (req, res) => {
   const { title, slug, challengeBrief, status, organizerUserIds } = req.body;
-  if (!title) return res.status(400).json({ error: "title 必填" });
+  if (!title) return badRequest(res, "title 必填");
 
   const id = uid();
   const t = now();
@@ -118,7 +129,7 @@ app.post("/api/races", (req, res) => {
 
   // Check slug uniqueness
   const existing = get("SELECT * FROM races WHERE slug = ?", [raceSlug]);
-  if (existing) return res.status(409).json({ error: `slug "${raceSlug}" 已存在` });
+  if (existing) return conflictErr(res, `slug "${raceSlug}" 已存在`);
 
   run(
     `INSERT INTO races (id, slug, title, challenge_brief, status, time_windows, award_settings, organizer_user_ids, created_by_user_id, visibility, created_at, updated_at)
@@ -127,20 +138,28 @@ app.post("/api/races", (req, res) => {
       id, raceSlug, title, challengeBrief || "", status || "draft",
       JSON.stringify({}), JSON.stringify([]),
       JSON.stringify(organizerUserIds || []),
-      organizerUserIds?.[0] || "system",
+      organizerUserIds?.[0] || req.user?.id || "system",
       "public", t, t,
     ],
   );
   save();
+  logger.info("race", `Created race "${title}"`, { id, slug: raceSlug });
   res.status(201).json({ id, slug: raceSlug, title, status: status || "draft" });
 });
 
 // PUT /api/races/:id — update race settings
-app.put("/api/races/:id", (req, res) => {
+app.put("/api/races/:id", requireAuth, (req, res) => {
   const race = get("SELECT * FROM races WHERE id = ?", [req.params.id]);
-  if (!race) return res.status(404).json({ error: "赛事不存在" });
+  if (!race) return notFound(res, "赛事");
 
   const { title, challengeBrief, status, rules, timeWindows } = req.body;
+
+  // State-machine guard: validate status transition
+  if (status !== undefined && status !== race.status) {
+    const { ok: valid, reason } = raceCanTransition(race.status, status);
+    if (!valid) return conflictErr(res, `状态变更不允许: ${reason}`);
+  }
+
   const patch = { updated_at: now() };
   if (title !== undefined) patch.title = title;
   if (challengeBrief !== undefined) patch.challenge_brief = challengeBrief;
@@ -150,13 +169,14 @@ app.put("/api/races/:id", (req, res) => {
 
   update("races", race.id, patch);
   save();
+  logger.info("race", `Updated race`, { id: race.id, status: status || race.status });
   res.json({ ok: true, id: race.id });
 });
 
 // GET /api/races/:slug — single race detail
 app.get("/api/races/:slug", (req, res) => {
   const race = get("SELECT * FROM races WHERE slug = ?", [req.params.slug]);
-  if (!race) return res.status(404).json({ error: "赛事不存在" });
+  if (!race) return notFound(res, "赛事");
   race.time_windows = JSON.parse(race.time_windows || "{}");
   race.award_settings = JSON.parse(race.award_settings || "[]");
   race.organizer_user_ids = JSON.parse(race.organizer_user_ids || "[]");
@@ -177,7 +197,7 @@ app.get("/api/races/:slug", (req, res) => {
 // GET /api/races/:slug/works — race works
 app.get("/api/races/:slug/works", (req, res) => {
   const race = get("SELECT * FROM races WHERE slug = ?", [req.params.slug]);
-  if (!race) return res.status(404).json({ error: "赛事不存在" });
+  if (!race) return notFound(res, "赛事");
 
   const works = all(
     `SELECT w.*, u.display_name as author_name, u.slug as author_slug
@@ -194,7 +214,7 @@ app.get("/api/races/:slug/works", (req, res) => {
 // GET /api/races/:slug/results — race results
 app.get("/api/races/:slug/results", (req, res) => {
   const race = get("SELECT * FROM races WHERE slug = ?", [req.params.slug]);
-  if (!race) return res.status(404).json({ error: "赛事不存在" });
+  if (!race) return notFound(res, "赛事");
 
   const awards = all(
     `SELECT a.*, u.display_name as rider_name, w.title as work_title
@@ -210,13 +230,13 @@ app.get("/api/races/:slug/results", (req, res) => {
 
 // ==================== Registration Routes ====================
 
-// POST /api/registrations — submit registration
+// POST /api/registrations — submit registration (public, no auth required for MVP)
 app.post("/api/registrations", (req, res) => {
   const { raceId, userId } = req.body;
-  if (!raceId || !userId) return res.status(400).json({ error: "raceId 和 userId 必填" });
+  if (!raceId || !userId) return badRequest(res, "raceId 和 userId 必填");
 
   const race = get("SELECT * FROM races WHERE id = ?", [raceId]);
-  if (!race) return res.status(404).json({ error: "赛事不存在" });
+  if (!race) return notFound(res, "赛事");
 
   // Check unique constraint
   const existing = get("SELECT * FROM registrations WHERE race_id = ? AND user_id = ?", [
@@ -224,7 +244,7 @@ app.post("/api/registrations", (req, res) => {
     userId,
   ]);
   if (existing) {
-    return res.status(409).json({ error: "您已报名此赛事", constraintKey: `${raceId}::${userId}` });
+    return conflictErr(res, `您已报名此赛事 (constraint: ${raceId}::${userId})`);
   }
 
   const t = now();
@@ -236,13 +256,20 @@ app.post("/api/registrations", (req, res) => {
   );
   save();
 
+  logger.info("registration", "Registration submitted", { id, raceId, userId });
   res.status(201).json({ id, status: "submitted" });
 });
 
 // PUT /api/registrations/:id/approve — approve registration
-app.put("/api/registrations/:id/approve", (req, res) => {
+app.put("/api/registrations/:id/approve", requireAuth, (req, res) => {
   const reg = get("SELECT * FROM registrations WHERE id = ?", [req.params.id]);
-  if (!reg) return res.status(404).json({ error: "报名不存在" });
+  if (!reg) return notFound(res, "报名");
+
+  // State-machine guard
+  if (reg.status !== "approved") {
+    const { ok: valid, reason } = registrationCanTransition(reg.status, "approved");
+    if (!valid) return conflictErr(res, `无法审批: ${reason}`);
+  }
 
   if (reg.status === "approved") {
     // Idempotent: ensure RaceProject exists
@@ -256,7 +283,7 @@ app.put("/api/registrations/:id/approve", (req, res) => {
   }
 
   const t = now();
-  const approvedBy = req.body.approvedByUserId || "system";
+  const approvedBy = req.body.approvedByUserId || req.user?.id || "system";
 
   // Update registration
   update("registrations", reg.id, {
@@ -275,6 +302,7 @@ app.put("/api/registrations/:id/approve", (req, res) => {
   );
   save();
 
+  logger.info("registration", "Registration approved", { id: reg.id, raceProjectId: rpId });
   res.json({
     ok: true,
     registration_id: reg.id,
@@ -283,10 +311,13 @@ app.put("/api/registrations/:id/approve", (req, res) => {
 });
 
 // PUT /api/registrations/:id/reject — reject registration
-app.put("/api/registrations/:id/reject", (req, res) => {
+app.put("/api/registrations/:id/reject", requireAuth, (req, res) => {
   const reg = get("SELECT * FROM registrations WHERE id = ?", [req.params.id]);
-  if (!reg) return res.status(404).json({ error: "报名不存在" });
-  if (reg.status !== "submitted") return res.status(400).json({ error: "只能拒绝待审核的报名" });
+  if (!reg) return notFound(res, "报名");
+
+  // State-machine guard
+  const { ok: valid, reason } = registrationCanTransition(reg.status, "rejected");
+  if (!valid) return conflictErr(res, `无法拒绝: ${reason}`);
 
   const t = now();
   update("registrations", reg.id, {
@@ -296,6 +327,7 @@ app.put("/api/registrations/:id/reject", (req, res) => {
     updated_at: t,
   });
   save();
+  logger.info("registration", "Registration rejected", { id: reg.id });
   res.json({ ok: true, id: reg.id, status: "rejected" });
 });
 
@@ -319,16 +351,16 @@ app.get("/api/registrations", (req, res) => {
 // ==================== Work Routes ====================
 
 // POST /api/works — create/submit work
-app.post("/api/works", (req, res) => {
+app.post("/api/works", requireAuth, (req, res) => {
   const { registrationId, title, summary, description, repoUrl } = req.body;
-  if (!registrationId || !title) return res.status(400).json({ error: "registrationId 和 title 必填" });
+  if (!registrationId || !title) return badRequest(res, "registrationId 和 title 必填");
 
   const reg = get("SELECT * FROM registrations WHERE id = ?", [registrationId]);
-  if (!reg) return res.status(404).json({ error: "报名不存在" });
+  if (!reg) return notFound(res, "报名");
 
   // Check unique constraint (MVP: 1 work per registration)
   const existing = get("SELECT * FROM works WHERE registration_id = ?", [registrationId]);
-  if (existing) return res.status(409).json({ error: "该报名已有作品（MVP 限制一个作品）" });
+  if (existing) return conflictErr(res, "该报名已有作品（MVP 限制一个作品）");
 
   const t = now();
   const workId = uid();
@@ -338,7 +370,7 @@ app.post("/api/works", (req, res) => {
     [workId, registrationId, reg.race_id, reg.user_id, title, summary || "", description || "", repoUrl || null, t, t, t],
   );
   save();
-
+  logger.info("work", "Work submitted", { id: workId, registrationId });
   res.status(201).json({ id: workId, status: "submitted" });
 });
 
@@ -368,12 +400,12 @@ app.get("/api/ca-connections", (req, res) => {
 });
 
 // POST /api/ca-connections — register a CA connection
-app.post("/api/ca-connections", (req, res) => {
+app.post("/api/ca-connections", requireAuth, (req, res) => {
   const { raceProjectId, connectorId, caProjectId, caType } = req.body;
-  if (!raceProjectId || !connectorId) return res.status(400).json({ error: "raceProjectId 和 connectorId 必填" });
+  if (!raceProjectId || !connectorId) return badRequest(res, "raceProjectId 和 connectorId 必填");
 
   const rp = get("SELECT * FROM race_projects WHERE id = ?", [raceProjectId]);
-  if (!rp) return res.status(404).json({ error: "RaceProject 不存在" });
+  if (!rp) return notFound(res, "RaceProject");
 
   const t = now();
   const id = uid();
@@ -397,22 +429,24 @@ app.post("/api/ca-connections", (req, res) => {
       ],
     );
     save();
+    logger.info("ca", "CA connection registered", { id, raceProjectId });
     res.status(201).json({ id, ingestionStatus: "connected" });
   } catch (e) {
-    res.status(409).json({ error: "CAConnection 唯一键冲突: " + e.message });
+    throw new AppError("CAConnection 唯一键冲突: " + e.message, "CONFLICT", 409);
   }
 });
 
 // POST /api/ca-verify — CA message verification (legacy)
 app.post("/api/ca-verify", (req, res) => {
   const { caConnectionId, message } = req.body;
-  if (!caConnectionId || !message) return res.status(400).json({ error: "caConnectionId 和 message 必填" });
+  if (!caConnectionId || !message) return badRequest(res, "caConnectionId 和 message 必填");
   import("./ca-verifier.js").then(({ verifyMessage }) => {
     const result = verifyMessage({ ...message, caConnectionId });
     save();
     res.json(result);
   }).catch((err) => {
-    res.status(500).json({ error: "验签模块加载失败: " + err.message });
+    logger.error("ca", "CA verifier module load failed", err);
+    internalError(res, "验签模块加载失败");
   });
 });
 
@@ -421,11 +455,11 @@ app.post("/api/ca-verify", (req, res) => {
 // POST /api/ca/message — receive a riding signal message
 app.post("/api/ca/message", (req, res) => {
   const { caConnectionId, signalType, signalKind, phase, taskStatus, progressPercent, tokensUsed, content } = req.body;
-  if (!caConnectionId) return res.status(400).json({ error: "caConnectionId 必填" });
+  if (!caConnectionId) return badRequest(res, "caConnectionId 必填");
 
   const caConn = get("SELECT * FROM ca_connections WHERE id = ?", [caConnectionId]);
-  if (!caConn) return res.status(404).json({ error: "CAConnection 不存在" });
-  if (caConn.disabled_at) return res.status(403).json({ error: "CAConnection 已禁用" });
+  if (!caConn) return notFound(res, "CAConnection");
+  if (caConn.disabled_at) return forbidden(res, "CAConnection 已禁用");
 
   const t = now();
   const id = uid();
@@ -503,7 +537,7 @@ function updateProjection(raceProjectId, raceId, registrationId, userId, event) 
 app.get("/api/live-hall/:raceId", (req, res) => {
   let race = get("SELECT * FROM races WHERE id = ?", [req.params.raceId]);
   if (!race) race = get("SELECT * FROM races WHERE slug = ?", [req.params.raceId]);
-  if (!race) return res.status(404).json({ error: "赛事不存在" });
+  if (!race) return notFound(res, "赛事");
 
   const projections = all("SELECT * FROM race_projections WHERE race_id = ? ORDER BY leaderboard_rank ASC", [req.params.raceId]);
   const recentEvents = all(
@@ -536,7 +570,7 @@ app.get("/api/live-hall/:raceId", (req, res) => {
 // GET /api/projections/:raceProjectId — individual projection
 app.get("/api/projections/:raceProjectId", (req, res) => {
   const p = get("SELECT * FROM race_projections WHERE race_project_id = ?", [req.params.raceProjectId]);
-  if (!p) return res.status(404).json({ error: "Projection 不存在" });
+  if (!p) return notFound(res, "Projection");
   res.json({ ...p, metrics: JSON.parse(p.metrics || "{}"), risks: JSON.parse(p.risks || "[]") });
 });
 
@@ -545,10 +579,10 @@ app.get("/api/projections/:raceProjectId", (req, res) => {
 // POST /api/sessions — create a new session for a CA connection
 app.post("/api/sessions", (req, res) => {
   const { caConnectionId, caSessionId } = req.body;
-  if (!caConnectionId || !caSessionId) return res.status(400).json({ error: "caConnectionId 和 caSessionId 必填" });
+  if (!caConnectionId || !caSessionId) return badRequest(res, "caConnectionId 和 caSessionId 必填");
 
   const caConn = get("SELECT * FROM ca_connections WHERE id = ?", [caConnectionId]);
-  if (!caConn) return res.status(404).json({ error: "CAConnection 不存在" });
+  if (!caConn) return notFound(res, "CAConnection");
 
   const t = now();
   const id = uid();
@@ -563,7 +597,7 @@ app.post("/api/sessions", (req, res) => {
     save();
     res.status(201).json({ id, status: "active" });
   } catch (e) {
-    res.status(409).json({ error: "Session 创建失败: " + e.message });
+    throw new AppError("Session 创建失败: " + e.message, "CONFLICT", 409);
   }
 });
 
@@ -597,9 +631,9 @@ app.get("/api/race-projects", (req, res) => {
 // ==================== Judge Assignment Routes ====================
 
 // POST /api/judge-assignments — assign a judge to a work
-app.post("/api/judge-assignments", (req, res) => {
+app.post("/api/judge-assignments", requireAuth, (req, res) => {
   const { raceId, workId, judgeUserId, assignedByUserId } = req.body;
-  if (!raceId || !workId || !judgeUserId) return res.status(400).json({ error: "raceId, workId, judgeUserId 必填" });
+  if (!raceId || !workId || !judgeUserId) return badRequest(res, "raceId, workId, judgeUserId 必填");
 
   const t = now();
   const id = uid();
@@ -607,12 +641,13 @@ app.post("/api/judge-assignments", (req, res) => {
     run(
       `INSERT INTO judge_assignments (id, race_id, work_id, judge_user_id, assigned_by_user_id, status, assigned_at, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, 'assigned', ?, ?, ?)`,
-      [id, raceId, workId, judgeUserId, assignedByUserId || "system", t, t, t],
+      [id, raceId, workId, judgeUserId, assignedByUserId || req.user?.id || "system", t, t, t],
     );
     save();
+    logger.info("judge", "Judge assigned", { id, workId, judgeUserId });
     res.status(201).json({ id, status: "assigned" });
   } catch (e) {
-    res.status(409).json({ error: "分配冲突: " + e.message });
+    throw new AppError("分配冲突: " + e.message, "CONFLICT", 409);
   }
 });
 
@@ -628,7 +663,7 @@ app.get("/api/judge-assignments", (req, res) => {
 });
 
 // DELETE /api/judge-assignments/:id — remove a judge assignment
-app.delete("/api/judge-assignments/:id", (req, res) => {
+app.delete("/api/judge-assignments/:id", requireAuth, (req, res) => {
   run("DELETE FROM judge_assignments WHERE id = ?", [req.params.id]);
   save();
   res.json({ ok: true });
@@ -637,9 +672,9 @@ app.delete("/api/judge-assignments/:id", (req, res) => {
 // ==================== Judging Record Routes ====================
 
 // POST /api/judging-records — submit a judging record
-app.post("/api/judging-records", (req, res) => {
+app.post("/api/judging-records", requireAuth, (req, res) => {
   const { judgeAssignmentId, workId, judgeUserId, scoreResult, scoreRiding, comments } = req.body;
-  if (!judgeAssignmentId || !workId || !judgeUserId) return res.status(400).json({ error: "必填字段缺失" });
+  if (!judgeAssignmentId || !workId || !judgeUserId) return badRequest(res, "必填字段缺失 (judgeAssignmentId, workId, judgeUserId)");
 
   const t = now();
   const id = uid();
@@ -652,9 +687,10 @@ app.post("/api/judging-records", (req, res) => {
     // Mark assignment as completed
     run("UPDATE judge_assignments SET status = 'completed', completed_at = ?, updated_at = ? WHERE id = ?", [t, t, judgeAssignmentId]);
     save();
+    logger.info("judge", "Judging record submitted", { id, workId, judgeUserId });
     res.status(201).json({ id, status: "submitted" });
   } catch (e) {
-    res.status(409).json({ error: "评审记录冲突: " + e.message });
+    throw new AppError("评审记录冲突: " + e.message, "CONFLICT", 409);
   }
 });
 
@@ -682,9 +718,9 @@ app.get("/api/awards", (_req, res) => {
 });
 
 // POST /api/awards — create an award for a registration
-app.post("/api/awards", (req, res) => {
+app.post("/api/awards", requireAuth, (req, res) => {
   const { raceId, registrationId, awardName, rank, workId, decisionReason } = req.body;
-  if (!raceId || !registrationId || !awardName) return res.status(400).json({ error: "raceId, registrationId, awardName 必填" });
+  if (!raceId || !registrationId || !awardName) return badRequest(res, "raceId, registrationId, awardName 必填");
 
   const t = now();
   const id = uid();
@@ -695,27 +731,33 @@ app.post("/api/awards", (req, res) => {
       [id, raceId, registrationId, workId || null, awardName, rank || 1, decisionReason || "", t, t],
     );
     save();
+    logger.info("award", "Award created", { id, raceId, awardName });
     res.status(201).json({ id, status: "draft" });
   } catch (e) {
-    res.status(409).json({ error: "奖项创建冲突: " + e.message });
+    throw new AppError("奖项创建冲突: " + e.message, "CONFLICT", 409);
   }
 });
 
 // PUT /api/awards/:id/publish — publish an award
-app.put("/api/awards/:id/publish", (req, res) => {
+app.put("/api/awards/:id/publish", requireAuth, (req, res) => {
   const award = get("SELECT * FROM awards WHERE id = ?", [req.params.id]);
-  if (!award) return res.status(404).json({ error: "奖项不存在" });
+  if (!award) return notFound(res, "奖项");
+
+  // State-machine guard
+  const { ok: valid, reason } = awardCanTransition(award.status, "published");
+  if (!valid) return conflictErr(res, `无法发布: ${reason}`);
 
   const t = now();
   update("awards", award.id, { status: "published", published_at: t, updated_at: t });
   save();
+  logger.info("award", "Award published", { id: award.id, awardName: award.award_name });
   res.json({ ok: true, id: award.id, status: "published" });
 });
 
 // PUT /api/awards/:id — update award
-app.put("/api/awards/:id", (req, res) => {
+app.put("/api/awards/:id", requireAuth, (req, res) => {
   const award = get("SELECT * FROM awards WHERE id = ?", [req.params.id]);
-  if (!award) return res.status(404).json({ error: "奖项不存在" });
+  if (!award) return notFound(res, "奖项");
 
   const { awardName, rank, decisionReason } = req.body;
   const patch = {};
@@ -731,13 +773,11 @@ app.put("/api/awards/:id", (req, res) => {
 // ==================== DEV-7: Report Generator ====================
 
 // GET /api/health — health check endpoint
-app.get("/api/health", async (_req, res) => {
+app.get("/api/health", async (_req, res, next) => {
   try {
     const raceCount = all("SELECT COUNT(*) as count FROM races")[0]?.count || 0;
     const userCount = all("SELECT COUNT(*) as count FROM users")[0]?.count || 0;
-    const dbPath = process.env.DB_PATH || "db/ary.sqlite";
-    const fs = await import("node:fs");
-    const dbStats = fs.existsSync(dbPath) ? fs.statSync(dbPath) : null;
+    const dbStats = fs.existsSync(config.dbPath) ? fs.statSync(config.dbPath) : null;
     res.json({
       status: "ok",
       uptime: process.uptime(),
@@ -745,17 +785,17 @@ app.get("/api/health", async (_req, res) => {
       db: { sizeBytes: dbStats?.size || 0, races: raceCount, users: userCount },
     });
   } catch (e) {
-    res.status(500).json({ status: "error", message: e.message });
+    next(e);
   }
 });
 
 // POST /api/reports/generate — generate a report for a race
-app.post("/api/reports/generate", (req, res) => {
+app.post("/api/reports/generate", requireAuth, (req, res) => {
   const { raceId, reportType, subjectRegistrationId } = req.body;
-  if (!raceId || !reportType) return res.status(400).json({ error: "raceId 和 reportType 必填" });
+  if (!raceId || !reportType) return badRequest(res, "raceId 和 reportType 必填");
 
   const race = get("SELECT * FROM races WHERE id = ?", [raceId]);
-  if (!race) return res.status(404).json({ error: "赛事不存在" });
+  if (!race) return notFound(res, "赛事");
 
   const t = now();
   const reportId = uid();
@@ -778,9 +818,9 @@ app.post("/api/reports/generate", (req, res) => {
     }, null, 2);
 
   } else if (reportType === "rider_report") {
-    if (!subjectRegistrationId) return res.status(400).json({ error: "rider_report 需要 subjectRegistrationId" });
+    if (!subjectRegistrationId) return badRequest(res, "rider_report 需要 subjectRegistrationId");
     const reg = get("SELECT * FROM registrations WHERE id = ?", [subjectRegistrationId]);
-    if (!reg) return res.status(404).json({ error: "报名不存在" });
+    if (!reg) return notFound(res, "报名");
     const user = get("SELECT * FROM users WHERE id = ?", [reg.user_id]);
     const rp = get("SELECT * FROM race_projects WHERE registration_id = ?", [subjectRegistrationId]);
     const work = get("SELECT * FROM works WHERE registration_id = ?", [subjectRegistrationId]);
@@ -817,9 +857,10 @@ app.post("/api/reports/generate", (req, res) => {
       [reportId, raceId, reportType, subjectRegistrationId || null, title, content, t, t],
     );
     save();
+    logger.info("report", "Report generated", { id: reportId, reportType, raceId });
     res.status(201).json({ id: reportId, title, reportType, status: "generated" });
   } catch (e) {
-    res.status(409).json({ error: "报告生成失败: " + e.message });
+    throw new AppError("报告生成失败: " + e.message, "CONFLICT", 409);
   }
 });
 
@@ -835,13 +876,14 @@ app.get("/api/reports", (req, res) => {
 });
 
 // PUT /api/reports/:id/publish — publish a report
-app.put("/api/reports/:id/publish", (req, res) => {
+app.put("/api/reports/:id/publish", requireAuth, (req, res) => {
   const report = get("SELECT * FROM reports WHERE id = ?", [req.params.id]);
-  if (!report) return res.status(404).json({ error: "报告不存在" });
+  if (!report) return notFound(res, "报告");
 
   const t = now();
   update("reports", report.id, { status: "published", published_at: t, updated_at: t, visibility: "public" });
   save();
+  logger.info("report", "Report published", { id: report.id });
   res.json({ ok: true, id: report.id, status: "published" });
 });
 
@@ -864,28 +906,11 @@ app.get("/api/stats", (_req, res) => {
   });
 });
 
-// ==================== Helpers ====================
+// ==================== Global Error Handler ====================
+// Must be registered AFTER all routes.
+app.use(errorHandler);
 
-let _jsonFieldsCache = null;
-function getJsonFields() {
-  if (!_jsonFieldsCache) {
-    _jsonFieldsCache = {
-      user: ["roles", "profile"],
-      race: ["time_windows", "award_settings", "organizer_user_ids"],
-      registration: ["review_flags"],
-      race_project: ["authenticity_summary", "review_flags"],
-      session: ["metrics"],
-      judging_record: ["score_result", "score_riding"],
-      evidence: ["source_ref", "tags"],
-      report: ["generated_from"],
-      session_summary: ["metrics", "capability_tags"],
-      award: [],
-      ca_connection: [],
-      work: [],
-    };
-  }
-  return _jsonFieldsCache;
-}
+// ==================== Helpers ====================
 
 function parseUser(u) {
   return { ...u, roles: JSON.parse(u.roles || "[]"), profile: JSON.parse(u.profile || "{}") };
@@ -910,12 +935,16 @@ async function start() {
     seedDemo();
   }
 
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
+  app.listen(config.port, () => {
+    logger.info("app", "ARY MVP — API Server Ready", {
+      port: config.port,
+      env: config.nodeEnv,
+      logLevel: config.logLevel,
+    });
     console.log(`\n  ARY MVP — API Server Ready`);
-    console.log(`  → http://localhost:${PORT}`);
-    console.log(`  → API:   http://localhost:${PORT}/api/races`);
-    console.log(`  → Stats: http://localhost:${PORT}/api/stats\n`);
+    console.log(`  → http://localhost:${config.port}`);
+    console.log(`  → API:   http://localhost:${config.port}/api/races`);
+    console.log(`  → Stats: http://localhost:${config.port}/api/stats\n`);
   });
 }
 

@@ -76,7 +76,7 @@ export function insert(table, obj) {
   const keys = Object.keys(obj);
   const placeholders = keys.map(() => "?").join(", ");
   const values = keys.map((k) => obj[k]);
-  const sql = `INSERT OR REPLACE INTO ${table} (${keys.join(", ")}) VALUES (${placeholders})`;
+  const sql = `INSERT INTO ${table} (${keys.join(", ")}) VALUES (${placeholders})`;
   run(sql, values);
   return id;
 }
