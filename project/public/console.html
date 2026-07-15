@@ -257,6 +257,38 @@
     .status-tag.rejected { background:hsl(0, 93%, 94%);color:hsl(0, 80%, 30%); }
     .status-tag.draft { background:hsl(215, 15%, 90%);color:hsl(215, 15%, 45%); }
 
+    /* ====== Select & Button Styling ====== */
+    select {
+      padding: 6px 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: var(--glass-bg);
+      color: var(--ink);
+      font-weight: 600;
+      font-size: 13px;
+      outline: none;
+      transition: var(--transition);
+      cursor: pointer;
+    }
+    select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-glow);
+    }
+    button.primary {
+      color: #fff !important;
+      background: linear-gradient(135deg, var(--primary), hsl(var(--h-primary), 85%, 50%)) !important;
+      border: none !important;
+      box-shadow: 0 4px 12px -3px var(--primary) !important;
+      font-weight: 700;
+      cursor: pointer;
+      border-radius: var(--radius-sm);
+      transition: var(--transition);
+    }
+    button.primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px -2px var(--primary) !important;
+    }
+
     /* ====== Workspace Tabs ====== */
     .tab-bar {
       display: flex;
@@ -865,11 +897,11 @@ function renderOrgOverview(race) {
       <div class="info-row"><span class="label">报名 / 已通过 / 待审</span><span class="value">${regs.length} / ${approved.length} / ${pending.length}</span></div>
       <div class="info-row" style="border-top:1px solid var(--line);padding-top:10px;margin-top:10px;">
         <span class="label">变更状态</span>
-        <span class="value">
-          <select id="race-status-select" style="padding:4px 8px;border:1px solid var(--line);border-radius:6px;font-size:12px;">
+        <span class="value" style="display:flex; gap:8px;">
+          <select id="race-status-select">
             ${statusOptions.map((s,i) => `<option value="${s}" ${i===statusIdx?'selected':''}>${statusLabel(s)}</option>`).join('')}
           </select>
-          <button class="primary" style="min-height:26px;padding:0 10px;font-size:11px;margin-left:4px;" onclick="doUpdateRaceStatus('${race.id}')">更新</button>
+          <button class="primary" style="padding:6px 12px;font-size:12px;" onclick="doUpdateRaceStatus('${race.id}')">更新</button>
         </span>
       </div>
     </div>
@@ -1016,7 +1048,7 @@ function renderOrgAwards(race) {
   return `<div class="workspace-panels">
     <div class="info-card" style="max-width:100%;"><h4>🏆 已发布 (${existing.length})</h4>
       ${existing.length===0?'<div style="color:var(--muted);font-size:13px;padding:8px 0;">暂无</div>'
-      :existing.map(a=>{const reg=regs.find(r=>r.id===a.registration_id);const user=reg?App.users.find(u=>u.id===reg.user_id):null;return `<div class="info-row"><span class="label">#${a.rank} ${a.award_name}</span><span class="value">${user?.display_name||'?'} ✅</span></div>`;}).join('')}
+      :existing.map(a=>{const reg=App.registrations.find(r=>r.id===a.registration_id);const user=reg?App.users.find(u=>u.id===reg.user_id):null;return `<div class="info-row"><span class="label">#${a.rank} ${a.award_name}</span><span class="value">${user?.display_name||'?'} ✅</span></div>`;}).join('')}
     </div>
     <div class="info-card" style="max-width:100%;"><h4>➕ 创建奖项</h4>
       ${regs.length===0?'<div style="color:var(--muted);font-size:13px;padding:8px 0;">没有已通过的选手</div>'
