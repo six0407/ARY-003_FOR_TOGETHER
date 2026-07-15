@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Race Console — ARY</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./app.css" />
   <style>
     /* ====== Console Layout ====== */
     .console-shell { position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg-gradient); }
@@ -242,10 +242,10 @@
       text-transform:uppercase;
       letter-spacing:0.5px;
     }
-    .info-card .info-row { display:flex;justify-content:space-between;padding:10px 0;font-size:14px;border-bottom:1px solid rgba(0,0,0,0.04); }
+    .info-card .info-row { display:flex;justify-content:space-between;align-items:flex-start;padding:10px 0;font-size:14px;border-bottom:1px solid rgba(0,0,0,0.04);gap:16px; }
     .info-card .info-row:last-child { border-bottom:none; }
-    .info-card .info-row .label { color:var(--muted);font-weight:600; }
-    .info-card .info-row .value { font-weight:700;color:var(--ink); }
+    .info-card .info-row .label { color:var(--muted);font-weight:600;flex-shrink:0; }
+    .info-card .info-row .value { font-weight:700;color:var(--ink);text-align:right;word-break:break-word; }
 
     .status-tag { display:inline-flex;align-items:center;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:800;text-transform:uppercase; }
     .status-tag.running { background:hsl(217, 90%, 93%);color:hsl(217, 85%, 28%); }
@@ -256,6 +256,46 @@
     .status-tag.approved { background:hsl(142, 70%, 93%);color:hsl(142, 75%, 25%); }
     .status-tag.rejected { background:hsl(0, 93%, 94%);color:hsl(0, 80%, 30%); }
     .status-tag.draft { background:hsl(215, 15%, 90%);color:hsl(215, 15%, 45%); }
+
+    /* ====== Workspace Tabs ====== */
+    .tab-bar {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 0;
+    }
+    .tab-item {
+      padding: 12px 16px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-size: 14.5px;
+      font-weight: 600;
+      cursor: pointer;
+      position: relative;
+      transition: var(--transition);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .tab-item:hover {
+      color: var(--ink);
+    }
+    .tab-item.active {
+      color: var(--primary);
+      font-weight: 800;
+    }
+    .tab-item.active::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--primary), var(--accent));
+      border-radius: 2px;
+    }
 
     /* ====== Login overlay ====== */
     .login-overlay { position:fixed;inset:0;background:rgba(15,23,42,0.4);backdrop-filter:blur(8px);z-index:100;display:flex;align-items:center;justify-content:center; }
@@ -476,7 +516,7 @@
       <div id="view-workspace" style="display:none;">
         <div class="workspace-top" id="workspace-top"></div>
         <!-- Workspace Tab Bar -->
-        <div style="display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--line);padding-bottom:0;" id="workspace-tabs"></div>
+        <div class="tab-bar" id="workspace-tabs"></div>
         <div id="workspace-content"></div>
         <div id="workspace-feedback" class="feedback" style="display:none;"></div>
       </div>
@@ -519,6 +559,18 @@ async function safeJson(res, defaultValue = []) {
   } catch(e) {
     return defaultValue;
   }
+}
+
+function fmtDate(d) {
+  if (!d) return '-';
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return d;
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const h = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${day} ${h}:${min}`;
 }
 
 // ====== App State ======
@@ -738,23 +790,23 @@ async function openWorkspace(raceId) {
   // Tabs
   const tabs = document.getElementById('workspace-tabs');
   if (isOrg) {
-    tabs.innerHTML = `<button class="sidebar-item active" onclick="switchWorkspaceTab('overview')" data-ws-tab="overview">📊 概览</button>
-      <button class="sidebar-item" onclick="switchWorkspaceTab('registrations')" data-ws-tab="registrations">📋 报名管理</button>
-      <button class="sidebar-item" onclick="switchWorkspaceTab('judges')" data-ws-tab="judges">👥 评委管理</button>
-      <button class="sidebar-item" onclick="switchWorkspaceTab('awards')" data-ws-tab="awards">🏆 奖项发布</button>
-      <button class="sidebar-item" onclick="switchWorkspaceTab('create-race')" data-ws-tab="create-race">➕ 创建赛事</button>`;
+    tabs.innerHTML = `<button class="tab-item active" onclick="switchWorkspaceTab('overview')" data-ws-tab="overview">📊 概览</button>
+      <button class="tab-item" onclick="switchWorkspaceTab('registrations')" data-ws-tab="registrations">📋 报名管理</button>
+      <button class="tab-item" onclick="switchWorkspaceTab('judges')" data-ws-tab="judges">👥 评委管理</button>
+      <button class="tab-item" onclick="switchWorkspaceTab('awards')" data-ws-tab="awards">🏆 奖项发布</button>
+      <button class="tab-item" onclick="switchWorkspaceTab('create-race')" data-ws-tab="create-race">➕ 创建赛事</button>`;
     App.wsTab = 'overview';
     switchWorkspaceTab('overview');
   } else if (isRider) {
     const reg = App.registrations.find(r=>r.race_id===raceId&&r.user_id===u.id);
-    tabs.innerHTML = `<button class="sidebar-item active" onclick="switchWorkspaceTab('rider-overview')" data-ws-tab="rider-overview">📊 概览</button>
-      <button class="sidebar-item" onclick="switchWorkspaceTab('rider-ca')" data-ws-tab="rider-ca">📡 CA 接入</button>
-      <button class="sidebar-item" onclick="switchWorkspaceTab('rider-work')" data-ws-tab="rider-work">📦 作品</button>`;
+    tabs.innerHTML = `<button class="tab-item active" onclick="switchWorkspaceTab('rider-overview')" data-ws-tab="rider-overview">📊 概览</button>
+      <button class="tab-item" onclick="switchWorkspaceTab('rider-ca')" data-ws-tab="rider-ca">📡 CA 接入</button>
+      <button class="tab-item" onclick="switchWorkspaceTab('rider-work')" data-ws-tab="rider-work">📦 作品</button>`;
     App.wsTab = 'rider-overview';
     switchWorkspaceTab('rider-overview');
   } else if (isJudge) {
-    tabs.innerHTML = `<button class="sidebar-item active" onclick="switchWorkspaceTab('judge-works')" data-ws-tab="judge-works">⚖️ 待评审</button>
-      <button class="sidebar-item" onclick="switchWorkspaceTab('judge-done')" data-ws-tab="judge-done">✅ 已评审</button>`;
+    tabs.innerHTML = `<button class="tab-item active" onclick="switchWorkspaceTab('judge-works')" data-ws-tab="judge-works">⚖️ 待评审</button>
+      <button class="tab-item" onclick="switchWorkspaceTab('judge-done')" data-ws-tab="judge-done">✅ 已评审</button>`;
     App.wsTab = 'judge-works';
     switchWorkspaceTab('judge-works');
   } else {
@@ -822,7 +874,10 @@ function renderOrgOverview(race) {
       </div>
     </div>
     <div class="info-card"><h4>⏰ 赛程</h4>
-      ${race.time_windows?Object.entries(race.time_windows||{}).map(([k,v])=>`<div class="info-row"><span class="label">${k}</span><span class="value">${new Date(v).toLocaleDateString('zh-CN')}</span></div>`).join(''):'<div class="info-row"><span>未设置</span></div>'}
+      ${race.time_windows?Object.entries(race.time_windows||{}).map(([k,v])=>{
+        const labelMap = { registration_start:'报名开始', registration_end:'报名截止', race_start:'比赛开始', race_end:'比赛结束', submission_deadline:'提交截止' };
+        return `<div class="info-row"><span class="label">${labelMap[k]||k}</span><span class="value">${fmtDate(v)}</span></div>`;
+      }).join(''):'<div class="info-row"><span>未设置</span></div>'}
     </div>
     <div class="info-card"><h4>📤 作品提交</h4>
       <div class="info-row"><span class="label">已提交作品</span><span class="value">${App.works.filter(w=>w.race_id===race.id).length}</span></div>
@@ -843,14 +898,14 @@ async function doUpdateRaceStatus(raceId) {
 
 function renderOrgRegistrations(race) {
   const regs = App.registrations.filter(r=>r.race_id===race.id);
-  if (regs.length===0) return '<div class="empty-state">暂无报名</div>';
+  if (regs.length===0) return '<div class="empty-state"><div class="icon">📋</div><p>暂无报名数据</p></div>';
   return `<div class="workspace-panels">
     ${regs.map(reg => {
       const user = App.users.find(u=>u.id===reg.user_id);
       const rp = App.raceProjects.find(r=>r.registration_id===reg.id);
       return `<div class="info-card"><h4>${user?.display_name||'未知'} <span class="status-tag ${reg.status}" style="float:right;">${statusLabel(reg.status)}</span></h4>
         <div class="info-row"><span class="label">GitHub</span><span class="value">${user?.github_account_id||'-'}</span></div>
-        <div class="info-row"><span class="label">报名时间</span><span class="value">${reg.submitted_at?new Date(reg.submitted_at).toLocaleString('zh-CN'):'-'}</span></div>
+        <div class="info-row"><span class="label">报名时间</span><span class="value">${fmtDate(reg.submitted_at)}</span></div>
         ${rp?`<div class="info-row"><span class="label">RaceProject</span><span class="value">${rp.aggregate_ingestion_status} (${rp.connection_health})</span></div>`:''}
         ${reg.status==='submitted'?`<div class="action-bar" style="margin-top:10px;"><button class="primary" onclick="doApprove('${reg.id}')">✅ 通过</button><button class="danger" onclick="doReject('${reg.id}')">❌ 拒绝</button></div>`:''}
         ${reg.review_flags&&reg.review_flags.length?`<div class="review-flags">⚠ ${reg.review_flags.map(f=>f.flagType||f).join(', ')}</div>`:''}
@@ -1003,9 +1058,9 @@ async function doPublishAward(awardId) {
 
 function renderJudgeWorks(race) {
   const u = App.currentUser;
-  if (!u) return '<div class="empty-state">请先登录</div>';
+  if (!u) return '<div class="empty-state"><div class="icon">🔒</div><p>请先登录</p></div>';
   const assignments = (App.judgeAssignments||[]).filter(ja=>ja.judge_user_id===u.id&&ja.race_id===race.id&&ja.status==='assigned');
-  if (assignments.length===0) return '<div class="empty-state">暂无待评审的作品</div>';
+  if (assignments.length===0) return '<div class="empty-state"><div class="icon">⚖️</div><p>暂无待评审的作品</p></div>';
   return `<div class="workspace-panels">${assignments.map(a => {
     const w = App.works.find(x=>x.id===a.work_id);
     if (!w) return '';
@@ -1028,7 +1083,7 @@ function renderJudgeWorks(race) {
 function renderJudgeDone(race) {
   const u = App.currentUser;
   const records = (App.judgingRecords||[]).filter(jr=>jr.judge_user_id===u.id);
-  if (records.length===0) return '<div class="empty-state">暂无已评审的作品</div>';
+  if (records.length===0) return '<div class="empty-state"><div class="icon">✅</div><p>暂无已评审的作品</p></div>';
   return `<div class="workspace-panels">${records.map(jr => `<div class="info-card"><h4>📄 ${jr.work_title||'作品'}</h4>
     <div class="info-row"><span class="label">作品分</span><span class="value">${jr.score_result?.score||jr.score_result||'?'}/10</span></div>
     <div class="info-row"><span class="label">骑行分</span><span class="value">${jr.score_riding?.score||jr.score_riding||'?'}/10</span></div>
@@ -1063,11 +1118,13 @@ function renderRiderOverview(race, reg) {
     const regsForRace = App.registrations.filter(x=>x.race_id===reg.race_id&&x.user_id===reg.user_id);
     const rpsForReg = App.raceProjects.filter(x=>x.registration_id===reg.id);
     const worksForReg = App.works.filter(x=>x.registration_id===reg.id);
-    constraints = `<div class="constraint-checks"><h4>DEV-1 约束校验</h4>
-      <div class="constraint-row ${regsForRace.length===1?'pass':'fail'}"><span>${regsForRace.length===1?'✓':'✗'}</span> 唯一 Registration<small>${regsForRace.length===1?'(raceId,userId) 唯一键正常':'违反唯一键'}</small></div>
-      <div class="constraint-row ${rpsForReg.length===1?'pass':'fail'}"><span>${rpsForReg.length===1?'✓':'✗'}</span> RaceProject<small>${rpsForReg.length===0?'未 approved':rpsForReg.length===1?'幂等通过':'异常'}</small></div>
-      <div class="constraint-row ${worksForReg.length<=1?'pass':'fail'}"><span>${worksForReg.length<=1?'✓':'✗'}</span> 主 Work 唯一<small>${worksForReg.length<=1?'≤1 通过':'违反'}</small></div>
-      <div class="constraint-row pass"><span>✓</span> CAConnection<small>${ccs.length} 个连接</small></div>
+    constraints = `<div class="info-card"><h4>🛡️ 参赛数据完整性校验</h4>
+      <div class="constraint-checks" style="margin-top:0; border:none; background:transparent; padding:0;">
+        <div class="constraint-row ${regsForRace.length===1?'pass':'fail'}"><span>${regsForRace.length===1?'✓':'✗'}</span><div>报名唯一性校验<small>${regsForRace.length===1?'正常 (无冲突)':'异常 (重复报名)'}</small></div></div>
+        <div class="constraint-row ${rpsForReg.length===1?'pass':'fail'}"><span>${rpsForReg.length===1?'✓':'✗'}</span><div>专属参赛项目建立<small>${rpsForReg.length===0?'未审批通过':rpsForReg.length===1?'已成功配置':'配置异常'}</small></div></div>
+        <div class="constraint-row ${worksForReg.length<=1?'pass':'fail'}"><span>${worksForReg.length<=1?'✓':'✗'}</span><div>作品提报限额校验<small>${worksForReg.length<=1?'正常 (未超额)':'超出提交限额'}</small></div></div>
+        <div class="constraint-row pass"><span>✓</span><div>骑行数据模拟连接<small>已接入 ${ccs.length} 个连接</small></div></div>
+      </div>
     </div>`;
   }
 
@@ -1075,8 +1132,8 @@ function renderRiderOverview(race, reg) {
   return `<div class="workspace-panels">
     <div class="info-card"><h4>📋 参赛状态</h4>
       <div class="info-row"><span class="label">报名</span><span class="value"><span class="status-tag ${reg?.status||'none'}">${statusLabel(reg?.status||'未报名')}</span></span></div>
-      ${reg?`<div class="info-row"><span class="label">提交时间</span><span class="value">${reg.submitted_at?new Date(reg.submitted_at).toLocaleString('zh-CN'):'-'}</span></div>`:''}
-      ${reg?.approved_at?`<div class="info-row"><span class="label">审核通过</span><span class="value">${new Date(reg.approved_at).toLocaleString('zh-CN')}</span></div>`:''}
+      ${reg?`<div class="info-row"><span class="label">提交时间</span><span class="value">${fmtDate(reg.submitted_at)}</span></div>`:''}
+      ${reg?.approved_at?`<div class="info-row"><span class="label">审核通过</span><span class="value">${fmtDate(reg.approved_at)}</span></div>`:''}
       <div class="info-row"><span class="label">赛事</span><span class="value">${race.title}</span></div>
       <div class="info-row"><span class="label">赛题</span><span class="value">${race.challenge_brief||'-'}</span></div>
     </div>
@@ -1091,7 +1148,8 @@ function renderRiderOverview(race, reg) {
       <div class="action-bar"><button onclick="switchWorkspaceTab('rider-work')">管理作品</button></div>
     </div>`:reg?.status==='approved'?`<div class="info-card"><h4>📦 作品</h4><div style="color:var(--muted);font-size:13px;padding:8px 0;"><button class="primary" onclick="switchWorkspaceTab('rider-work')">创建作品</button></div></div>`:''}
     ${ccs.length?`<div class="info-card"><h4>📡 CA 连接 (${ccs.length})</h4>${ccs.map(c=>`<div class="info-row"><span class="label">${c.connector_id||c.ca_type||'未知'}</span><span class="value"><span class="status-tag ${c.ingestion_status}">${c.ingestion_status}</span></span></div>`).join('')}</div>`:''}
-  </div>${constraints}`;
+    ${constraints}
+  </div>`;
 }
 
 function renderRiderCA(race, reg) {

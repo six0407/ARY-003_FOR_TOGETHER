@@ -42,7 +42,7 @@
       <span style="font-size:14px;font-weight:500;color:var(--muted)" id="raceCount"></span>
     </div>
     <div class="race-grid" id="raceGrid">
-      <div class="empty-state"><p>加载中...</p></div>
+      <div class="empty-state"><div class="icon">⏳</div><p>正在加载赛事列表...</p></div>
     </div>
   </div>
 
@@ -66,7 +66,7 @@
         renderRaces(races);
       } catch (e) {
         document.getElementById("raceGrid").innerHTML =
-          '<div class="empty-state"><p>无法连接服务器，请确认已启动 API 服务</p></div>';
+          '<div class="empty-state"><div class="icon">❌</div><p>无法连接服务器，请确认已启动 API 服务</p></div>';
       }
     }
 
@@ -131,7 +131,15 @@
     }
 
     function esc(s) { return String(s).replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[c]); }
-    function fmtDate(d) { if (!d) return "待定"; return new Date(d).toLocaleDateString("zh-CN"); }
+    function fmtDate(d) {
+      if (!d) return "待定";
+      const date = new Date(d);
+      if (isNaN(date.getTime())) return d;
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
 
     load();
   </script>
