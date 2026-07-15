@@ -16,7 +16,7 @@ import { required, oneOf, firstError } from "./validate.js";
 import { AppError, errorHandler } from "./middleware/error-handler.js";
 import { requireAuth, requireRole } from "./middleware/auth-guard.js";
 import {
-  raceCanTransition, registrationCanTransition, awardCanTransition,
+  raceCanTransition, registrationCanTransition, workCanTransition, awardCanTransition,
 } from "./state-machine.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -25,6 +25,48 @@ const publicDir = path.join(__dirname, "..", "public");
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Auth Middleware & Helpers
+app.use((req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    req.user = null;
+    return next();
+  }
+  const token = authHeader.replace("Bearer demo-token-", "");
+  const user = get("SELECT * FROM users WHERE id = ?", [token]);
+  if (!user) {
+    req.user = null;
+    return next();
+  }
+  user.roles = JSON.parse(user.roles || "[]");
+  user.profile = JSON.parse(user.profile || "{}");
+  req.user = user;
+  next();
+});
+
+function requireAuth(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: "未登录" });
+  next();
+}
+
+function requireAdmin(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: "未登录" });
+  if (!req.user.roles.includes("admin")) {
+    return res.status(403).json({ error: "权限不足，需要管理员角色" });
+  }
+  next();
+}
+
+function isOrganizerOfRace(user, raceId) {
+  if (!user) return false;
+  if (user.roles.includes("admin")) return true;
+  if (!user.roles.includes("organizer")) return false;
+  const race = get("SELECT * FROM races WHERE id = ?", [raceId]);
+  if (!race) return false;
+  const orgIds = JSON.parse(race.organizer_user_ids || "[]");
+  return orgIds.includes(user.id) || race.created_by_user_id === user.id;
+}
 
 // Root → home page (data-driven public gallery)
 app.get("/", (_req, res) => res.sendFile(path.join(publicDir, "home.html")));
@@ -67,7 +109,7 @@ app.post("/api/auth/login", (req, res) => {
 });
 
 // GET /api/auth/users — list all users
-app.get("/api/auth/users", (_req, res) => {
+app.get("/api/auth/users", requireAdmin, (_req, res) => {
   const users = all("SELECT * FROM users ORDER BY created_at DESC");
   res.json(users.map(parseUser));
 });
@@ -232,8 +274,13 @@ app.get("/api/races/:slug/results", (req, res) => {
 
 // POST /api/registrations — submit registration (public, no auth required for MVP)
 app.post("/api/registrations", (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "未登录" });
   const { raceId, userId } = req.body;
   if (!raceId || !userId) return badRequest(res, "raceId 和 userId 必填");
+
+  if (req.user.id !== userId && !req.user.roles.includes("admin")) {
+    return res.status(403).json({ error: "权限不足，您只能为自己报名" });
+  }
 
   const race = get("SELECT * FROM races WHERE id = ?", [raceId]);
   if (!race) return notFound(res, "赛事");
@@ -269,6 +316,15 @@ app.put("/api/registrations/:id/approve", requireAuth, (req, res) => {
   if (reg.status !== "approved") {
     const { ok: valid, reason } = registrationCanTransition(reg.status, "approved");
     if (!valid) return conflictErr(res, `无法审批: ${reason}`);
+  }
+
+  if (!isOrganizerOfRace(req.user, reg.race_id)) {
+    return res.status(403).json({ error: "权限不足，您不是该赛事的主办方" });
+  }
+
+  const transition = registrationCanTransition(reg.status, "approved");
+  if (!transition.ok) {
+    return res.status(400).json({ error: `无法批准报名: ${transition.reason}` });
   }
 
   if (reg.status === "approved") {
@@ -358,6 +414,10 @@ app.post("/api/works", requireAuth, (req, res) => {
   const reg = get("SELECT * FROM registrations WHERE id = ?", [registrationId]);
   if (!reg) return notFound(res, "报名");
 
+  if (req.user.id !== reg.user_id && !req.user.roles.includes("admin")) {
+    return res.status(403).json({ error: "权限不足，您只能为自己的报名提交作品" });
+  }
+
   // Check unique constraint (MVP: 1 work per registration)
   const existing = get("SELECT * FROM works WHERE registration_id = ?", [registrationId]);
   if (existing) return conflictErr(res, "该报名已有作品（MVP 限制一个作品）");
@@ -372,6 +432,37 @@ app.post("/api/works", requireAuth, (req, res) => {
   save();
   logger.info("work", "Work submitted", { id: workId, registrationId });
   res.status(201).json({ id: workId, status: "submitted" });
+});
+
+// PUT /api/works/:id — update work
+app.put("/api/works/:id", (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "未登录" });
+
+  const work = get("SELECT * FROM works WHERE id = ?", [req.params.id]);
+  if (!work) return res.status(404).json({ error: "作品不存在" });
+
+  if (req.user.id !== work.owner_user_id && !req.user.roles.includes("admin")) {
+    return res.status(403).json({ error: "权限不足，您只能修改自己的作品" });
+  }
+
+  if (work.status === "locked") {
+    return res.status(400).json({ error: "作品已被锁定，无法修改" });
+  }
+
+  const { title, summary, description, repoUrl } = req.body;
+  if (!title) return res.status(400).json({ error: "作品标题必填" });
+
+  const t = now();
+  update("works", work.id, {
+    title,
+    summary: summary || "",
+    description: description || "",
+    repo_url: repoUrl || null,
+    updated_at: t
+  });
+  save();
+
+  res.json({ ok: true, id: work.id, status: work.status });
 });
 
 // GET /api/works — list works (with optional filter)
@@ -406,6 +497,10 @@ app.post("/api/ca-connections", requireAuth, (req, res) => {
 
   const rp = get("SELECT * FROM race_projects WHERE id = ?", [raceProjectId]);
   if (!rp) return notFound(res, "RaceProject");
+
+  if (req.user.id !== rp.user_id && !req.user.roles.includes("admin")) {
+    return res.status(403).json({ error: "权限不足，您只能为自己的 RaceProject 登记 CA 连接" });
+  }
 
   const t = now();
   const id = uid();
@@ -539,10 +634,10 @@ app.get("/api/live-hall/:raceId", (req, res) => {
   if (!race) race = get("SELECT * FROM races WHERE slug = ?", [req.params.raceId]);
   if (!race) return notFound(res, "赛事");
 
-  const projections = all("SELECT * FROM race_projections WHERE race_id = ? ORDER BY leaderboard_rank ASC", [req.params.raceId]);
+  const projections = all("SELECT * FROM race_projections WHERE race_id = ? ORDER BY leaderboard_rank ASC", [race.id]);
   const recentEvents = all(
     "SELECT cm.*, u.display_name as rider_name FROM ca_messages cm JOIN users u ON (SELECT user_id FROM race_projects WHERE id = cm.race_project_id) = u.id WHERE cm.race_id = ? ORDER BY cm.received_at DESC LIMIT 20",
-    [req.params.raceId],
+    [race.id],
   );
 
   // Get CA connection statuses
@@ -583,6 +678,11 @@ app.post("/api/sessions", (req, res) => {
 
   const caConn = get("SELECT * FROM ca_connections WHERE id = ?", [caConnectionId]);
   if (!caConn) return notFound(res, "CAConnection");
+
+  if (!req.user) return res.status(401).json({ error: "未登录" });
+  if (req.user.id !== caConn.user_id && !req.user.roles.includes("admin")) {
+    return res.status(403).json({ error: "权限不足，您只能为自己的 CA 连接管理 Session" });
+  }
 
   const t = now();
   const id = uid();
@@ -635,6 +735,10 @@ app.post("/api/judge-assignments", requireAuth, (req, res) => {
   const { raceId, workId, judgeUserId, assignedByUserId } = req.body;
   if (!raceId || !workId || !judgeUserId) return badRequest(res, "raceId, workId, judgeUserId 必填");
 
+  if (!isOrganizerOfRace(req.user, raceId)) {
+    return res.status(403).json({ error: "权限不足，您不是该赛事的主办方" });
+  }
+
   const t = now();
   const id = uid();
   try {
@@ -675,6 +779,16 @@ app.delete("/api/judge-assignments/:id", requireAuth, (req, res) => {
 app.post("/api/judging-records", requireAuth, (req, res) => {
   const { judgeAssignmentId, workId, judgeUserId, scoreResult, scoreRiding, comments } = req.body;
   if (!judgeAssignmentId || !workId || !judgeUserId) return badRequest(res, "必填字段缺失 (judgeAssignmentId, workId, judgeUserId)");
+
+  if (req.user.id !== judgeUserId && !req.user.roles.includes("admin")) {
+    return res.status(403).json({ error: "权限不足，您只能以本人的身份提交评审" });
+  }
+
+  const assignment = get("SELECT * FROM judge_assignments WHERE id = ?", [judgeAssignmentId]);
+  if (!assignment) return res.status(404).json({ error: "评委分配不存在" });
+  if (assignment.judge_user_id !== judgeUserId) {
+    return res.status(400).json({ error: "分配对应的评委不符" });
+  }
 
   const t = now();
   const id = uid();
@@ -722,6 +836,10 @@ app.post("/api/awards", requireAuth, (req, res) => {
   const { raceId, registrationId, awardName, rank, workId, decisionReason } = req.body;
   if (!raceId || !registrationId || !awardName) return badRequest(res, "raceId, registrationId, awardName 必填");
 
+  if (!isOrganizerOfRace(req.user, raceId)) {
+    return res.status(403).json({ error: "权限不足，您不是该赛事的主办方" });
+  }
+
   const t = now();
   const id = uid();
   try {
@@ -747,6 +865,15 @@ app.put("/api/awards/:id/publish", requireAuth, (req, res) => {
   const { ok: valid, reason } = awardCanTransition(award.status, "published");
   if (!valid) return conflictErr(res, `无法发布: ${reason}`);
 
+  if (!isOrganizerOfRace(req.user, award.race_id)) {
+    return res.status(403).json({ error: "权限不足，您不是该赛事的主办方" });
+  }
+
+  const transition = awardCanTransition(award.status, "published");
+  if (!transition.ok) {
+    return res.status(400).json({ error: `无法发布奖项: ${transition.reason}` });
+  }
+
   const t = now();
   update("awards", award.id, { status: "published", published_at: t, updated_at: t });
   save();
@@ -758,6 +885,10 @@ app.put("/api/awards/:id/publish", requireAuth, (req, res) => {
 app.put("/api/awards/:id", requireAuth, (req, res) => {
   const award = get("SELECT * FROM awards WHERE id = ?", [req.params.id]);
   if (!award) return notFound(res, "奖项");
+
+  if (!isOrganizerOfRace(req.user, award.race_id)) {
+    return res.status(403).json({ error: "权限不足，您不是该赛事的主办方" });
+  }
 
   const { awardName, rank, decisionReason } = req.body;
   const patch = {};
@@ -793,6 +924,19 @@ app.get("/api/health", async (_req, res, next) => {
 app.post("/api/reports/generate", requireAuth, (req, res) => {
   const { raceId, reportType, subjectRegistrationId } = req.body;
   if (!raceId || !reportType) return badRequest(res, "raceId 和 reportType 必填");
+
+  if (reportType === "race_report" || reportType === "review_summary") {
+    if (!isOrganizerOfRace(req.user, raceId)) {
+      return res.status(403).json({ error: "权限不足，不是该赛事的主办方" });
+    }
+  } else if (reportType === "rider_report") {
+    if (!subjectRegistrationId) return res.status(400).json({ error: "rider_report 需要 subjectRegistrationId" });
+    const reg = get("SELECT * FROM registrations WHERE id = ?", [subjectRegistrationId]);
+    if (!reg) return res.status(404).json({ error: "报名不存在" });
+    if (req.user.id !== reg.user_id && !isOrganizerOfRace(req.user, raceId)) {
+      return res.status(403).json({ error: "权限不足，只能生成自己的或主办赛事的骑手报告" });
+    }
+  }
 
   const race = get("SELECT * FROM races WHERE id = ?", [raceId]);
   if (!race) return notFound(res, "赛事");
@@ -879,6 +1023,10 @@ app.get("/api/reports", (req, res) => {
 app.put("/api/reports/:id/publish", requireAuth, (req, res) => {
   const report = get("SELECT * FROM reports WHERE id = ?", [req.params.id]);
   if (!report) return notFound(res, "报告");
+
+  if (!isOrganizerOfRace(req.user, report.race_id)) {
+    return res.status(403).json({ error: "权限不足，您不是该赛事的主办方" });
+  }
 
   const t = now();
   update("reports", report.id, { status: "published", published_at: t, updated_at: t, visibility: "public" });

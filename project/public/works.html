@@ -54,6 +54,15 @@
 
     function esc(s) { return String(s).replace(/[<>&"]/g, c => ({ "<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;" })[c]); }
 
+    function stripMarkdown(text) {
+      if (!text) return "";
+      let clean = text;
+      clean = clean.replace(/^[#\-*]+\s+/gm, '');
+      clean = clean.replace(/\*\*(.*?)\*\*/g, '$1');
+      clean = clean.replace(/\*(.*?)\*/g, '$1');
+      return clean;
+    }
+
     function renderFilters(races, works) {
       const bar = document.getElementById("filterBar");
       bar.innerHTML = `
@@ -75,21 +84,23 @@
         document.getElementById("workList").innerHTML = '<div class="empty-state"><div class="icon">📦</div><p>暂无作品</p></div>';
         return;
       }
-      document.getElementById("workList").innerHTML = filtered.map(w => `
+      document.getElementById("workList").innerHTML = filtered.map(w => {
+        const cleanDesc = stripMarkdown(w.description || "");
+        return `
         <div class="card" style="margin-bottom:12px;cursor:pointer;" onclick="location.href='/work?id=${w.id}'">
           <div class="card-body">
             <div style="display:flex;justify-content:space-between;align-items:flex-start">
               <div>
                 <h3 style="font-size:17px;margin-bottom:4px">${esc(w.title)}</h3>
                 <p style="font-size:14px;color:var(--muted)">${esc(w.summary || "暂无描述")}</p>
-                ${w.description ? `<p style="font-size:13px;color:var(--muted);margin-top:8px;line-height:1.5">${esc(w.description.slice(0,200))}${w.description.length>200?'...':''}</p>` : ""}
+                ${cleanDesc ? `<p style="font-size:13px;color:var(--muted);margin-top:8px;line-height:1.5">${esc(cleanDesc.slice(0,200))}${cleanDesc.length>200?'...':''}</p>` : ""}
                 <div style="margin-top:10px;font-size:13px;color:var(--muted)">👤 ${esc(w.author_name || "匿名")} · ${{submitted:'已提交',draft:'草稿',locked:'已锁定'}[w.status]||w.status}</div>
               </div>
               <span class="badge ${w.status==='submitted'?'badge-live':'badge-draft'}">${{submitted:'已提交',draft:'草稿',locked:'已锁定'}[w.status]||w.status}</span>
             </div>
           </div>
         </div>
-      `).join("");
+      `; }).join("");
     }
 
     load();

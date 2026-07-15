@@ -92,11 +92,51 @@
 </div>
 
 <script>
-const App = { users: [], editingUser: null };
+const App = { users: [], editingUser: null, currentUser: null };
 
 async function init() {
+  const userId = sessionStorage.getItem('ary_console_user');
+  if (!userId) {
+    alert("请先在控制台登录！");
+    window.location.href = '/console';
+    return;
+  }
+
   try {
-    const res = await fetch('/api/auth/users');
+    // 1. Fetch current user to verify admin role
+    const meRes = await fetch('/api/users/me', {
+      headers: { 'Authorization': 'Bearer demo-token-' + userId }
+    });
+    if (!meRes.ok) {
+      alert("登录已失效，请重新登录！");
+      window.location.href = '/console';
+      return;
+    }
+    App.currentUser = await meRes.json();
+    if (!App.currentUser.roles.includes('admin')) {
+      document.body.innerHTML = `
+        <div style="font-family:system-ui;text-align:center;padding:50px;color:var(--text);height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f8fafc;">
+          <h2 style="font-size:24px;font-weight:800;margin-bottom:8px;color:#1e293b;">🚫 访问被拒绝</h2>
+          <p style="color:#64748b;margin-bottom:16px;">您没有管理员权限，无法查看此页面。</p>
+          <button onclick="window.location.href='/console'" style="padding:10px 20px;background:#2563eb;color:#fff;border:none;border-radius:10px;font-weight:bold;cursor:pointer;box-shadow:0 4px 6px rgba(37,99,235,0.2);">返回控制台</button>
+        </div>`;
+      return;
+    }
+
+    // 2. Render user area in header
+    document.getElementById('admin-user-area').innerHTML = `
+      <span style="font-size:13px;font-weight:600;color:var(--blue-950);margin-right:8px;">👤 ${App.currentUser.display_name}</span>
+      <span class="role-pill admin">Admin</span>
+    `;
+
+    // 3. Fetch users
+    const res = await fetch('/api/auth/users', {
+      headers: { 'Authorization': 'Bearer demo-token-' + userId }
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || '获取用户列表失败');
+    }
     App.users = await res.json();
     renderTable();
   } catch (e) {
@@ -171,19 +211,25 @@ function closeRoleEditor() {
 
 async function saveRoles() {
   if (!App.editingUser) return;
+  const userId = sessionStorage.getItem('ary_console_user');
   const roles = ['rider','judge','organizer','admin'].filter(k => document.getElementById(`role-${k}`).checked);
 
   try {
     const res = await fetch(`/api/auth/users/${App.editingUser.id}/roles`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer demo-token-' + userId
+      },
       body: JSON.stringify({ roles }),
     });
     const data = await res.json();
-    if (data.ok) {
+    if (res.ok && data.ok) {
       closeRoleEditor();
       // Refresh
-      const usersRes = await fetch('/api/auth/users');
+      const usersRes = await fetch('/api/auth/users', {
+        headers: { 'Authorization': 'Bearer demo-token-' + userId }
+      });
       App.users = await usersRes.json();
       renderTable();
     } else {

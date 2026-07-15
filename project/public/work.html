@@ -11,6 +11,41 @@
 <footer class="ary-footer">Agent Racing Yard · MVP v0.2</footer>
 <script>
   const workId = new URLSearchParams(location.search).get('id');
+
+  function esc(s) { return String(s || "").replace(/[<>&"]/g, c => ({ "<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;" })[c]); }
+
+  function parseMarkdown(text) {
+    if (!text) return "";
+    let html = esc(text);
+    
+    // Replace headings
+    html = html.replace(/^### (.*?)$/gm, '<h3>$1</h3>');
+    html = html.replace(/^## (.*?)$/gm, '<h2>$1</h2>');
+    html = html.replace(/^# (.*?)$/gm, '<h1>$1</h1>');
+    
+    // Bold & Italic
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    
+    // Lists: convert bullet items
+    html = html.replace(/^[\-*]\s+(.*?)$/gm, '<li>$1</li>');
+    // Group consecutive list items into ul
+    html = html.replace(/((?:<li>.*?<\/li>\s*)+)/g, '<ul>$1</ul>');
+
+    // Split blocks and wrap non-html blocks in p
+    const blocks = html.split(/\n\n+/);
+    html = blocks.map(block => {
+      block = block.trim();
+      if (!block) return "";
+      if (block.startsWith('<h') || block.startsWith('<ul') || block.startsWith('<li')) {
+        return block;
+      }
+      return `<p>${block.replace(/\n/g, '<br>')}</p>`;
+    }).join('');
+
+    return html;
+  }
+
   async function load(){
     if(!workId){ document.getElementById('app').innerHTML='<div class="empty-state">请指定作品 ID</div>'; return; }
     try {
@@ -27,19 +62,19 @@
       document.getElementById('app').innerHTML=
         `<div style="max-width:720px;"><div style="margin-bottom:16px;"><a href="/works.html" style="color:var(--muted);font-size:13px;font-weight:700;text-decoration:none;">← 返回作品广场</a></div>
         <div class="card"><div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
-          <h1 style="font-size:24px;margin:0;">${work.title}</h1>
+          <h1 style="font-size:24px;margin:0;">${esc(work.title)}</h1>
           <span class="badge ${work.status==='submitted'?'badge-live':'badge-draft'}">${{submitted:'已提交',draft:'草稿',locked:'已锁定'}[work.status]||work.status}</span>
         </div><div class="card-body">
-          ${work.summary?`<p style="font-size:15px;color:var(--muted);line-height:1.6;margin-bottom:16px;">${work.summary}</p>`:''}
-          ${work.description?`<div style="background:#f8fafc;border-radius:8px;padding:16px;margin-bottom:16px;font-size:14px;line-height:1.6;white-space:pre-wrap;">${work.description}</div>`:''}
+          ${work.summary?`<p style="font-size:15px;color:var(--muted);line-height:1.6;margin-bottom:16px;">${esc(work.summary)}</p>`:''}
+          ${work.description?`<div style="background:#f8fafc;border-radius:8px;padding:16px;margin-bottom:16px;font-size:14px;line-height:1.6;" class="markdown-body">${parseMarkdown(work.description)}</div>`:''}
           <div style="display:flex;gap:16px;font-size:14px;color:var(--muted);flex-wrap:wrap;">
-            <span>👤 作者: <a href="/rider.html?slug=${author?.slug||''}" style="color:var(--blue-700);font-weight:700;text-decoration:none;">${author?.display_name||'未知'}</a></span>
-            ${race?`<span>🏁 赛事: <a href="/race.html?slug=${race.slug}" style="color:var(--blue-700);font-weight:700;text-decoration:none;">${race.title}</a></span>`:''}
+            <span>👤 作者: <a href="/rider.html?slug=${author?.slug||''}" style="color:var(--blue-700);font-weight:700;text-decoration:none;">${esc(author?.display_name||'未知')}</a></span>
+            ${race?`<span>🏁 赛事: <a href="/race.html?slug=${race.slug}" style="color:var(--blue-700);font-weight:700;text-decoration:none;">${esc(race.title)}</a></span>`:''}
             ${work.submitted_at?`<span>📅 提交: ${new Date(work.submitted_at).toLocaleString('zh-CN')}</span>`:''}
           </div>
           <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
-            ${work.repo_url?`<a href="${work.repo_url}" target="_blank" class="btn btn-outline btn-sm">📂 查看代码</a>`:''}
-            ${work.demo_url?`<a href="${work.demo_url}" target="_blank" class="btn btn-outline btn-sm">🚀 查看 Demo</a>`:''}
+            ${work.repo_url?`<a href="${esc(work.repo_url)}" target="_blank" class="btn btn-outline btn-sm">📂 查看代码</a>`:''}
+            ${work.demo_url?`<a href="${esc(work.demo_url)}" target="_blank" class="btn btn-outline btn-sm">🚀 查看 Demo</a>`:''}
           </div>
         </div></div></div>`;
     } catch(e){ document.getElementById('app').innerHTML=`<div class="empty-state">加载失败: ${e.message}</div>`; }
