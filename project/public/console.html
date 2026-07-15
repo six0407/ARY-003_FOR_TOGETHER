@@ -202,6 +202,30 @@
 </div>
 
 <script>
+// Wrap fetch to automatically append Authorization header from session storage
+const originalFetch = window.fetch;
+window.fetch = function(url, options = {}) {
+  const userId = sessionStorage.getItem('ary_console_user');
+  if (userId) {
+    options.headers = options.headers || {};
+    if (!options.headers['Authorization']) {
+      options.headers['Authorization'] = `Bearer demo-token-${userId}`;
+    }
+  }
+  return originalFetch(url, options);
+};
+
+async function safeJson(res, defaultValue = []) {
+  if (!res.ok) return defaultValue;
+  try {
+    const data = await res.json();
+    if (data && data.error) return defaultValue;
+    return data;
+  } catch(e) {
+    return defaultValue;
+  }
+}
+
 // ====== App State ======
 const App = {
   currentUser: null,
@@ -222,7 +246,7 @@ const App = {
 // ====== Init ======
 async function init() {
   try {
-    const [racesRes, usersRes, regsRes, rpRes, worksRes, jaRes, jrRes, awRes] = await Promise.all([
+    const [racesRes, usersRes, regsRes, rpRes, worksRes, jaRes, jrRes, awRes, caRes] = await Promise.all([
       fetch('/api/races'),
       fetch('/api/auth/users'),
       fetch('/api/registrations'),
@@ -231,15 +255,17 @@ async function init() {
       fetch('/api/judge-assignments'),
       fetch('/api/judging-records'),
       fetch('/api/awards'),
+      fetch('/api/ca-connections'),
     ]);
-    App.races = await racesRes.json();
-    App.users = await usersRes.json();
-    App.registrations = await regsRes.json();
-    App.raceProjects = await rpRes.json();
-    App.works = await worksRes.json();
-    App.judgeAssignments = await jaRes.json();
-    App.judgingRecords = await jrRes.json();
-    try { App.awards = await awRes.json(); } catch(e) { App.awards = []; }
+    App.races = await safeJson(racesRes, []);
+    App.users = await safeJson(usersRes, []);
+    App.registrations = await safeJson(regsRes, []);
+    App.raceProjects = await safeJson(rpRes, []);
+    App.works = await safeJson(worksRes, []);
+    App.judgeAssignments = await safeJson(jaRes, []);
+    App.judgingRecords = await safeJson(jrRes, []);
+    App.caConnections = await safeJson(caRes, []);
+    App.awards = await safeJson(awRes, []);
 
     // Check session
     const saved = sessionStorage.getItem('ary_console_user');
@@ -339,6 +365,7 @@ function renderHome() {
 
   const isOrg = u.roles.includes('organizer')||u.roles.includes('admin');
   const isRider = u.roles.includes('rider');
+  const isJudge = u.roles.includes('judge');
   let html = '';
 
   if (isOrg) {
@@ -366,7 +393,20 @@ function renderHome() {
     </div>`;
   }
 
-  if (!isOrg&&!isRider) html += `<div class="empty-state">你的账号尚未分配角色，请联系管理员。<br><button onclick="window.location.href='/admin'">前往 Admin Console</button></div>`;
+  if (isJudge) {
+    const myAssignments = App.judgeAssignments.filter(ja => ja.judge_user_id === u.id);
+    const myJudgeRaces = App.races.filter(r => myAssignments.some(ja => ja.race_id === r.id));
+    html += `<div class="console-section"><h2>⚖️ 我评审的赛事 <span class="section-count">(${myJudgeRaces.length})</span></h2>
+      ${myJudgeRaces.length===0?'<div class="empty-state" style="padding:24px;">暂无分配给我的评审赛事</div>'
+      :`<div class="console-card-grid">${myJudgeRaces.map(r => `<div class="console-card" onclick="openWorkspace('${r.id}')">
+        <h3>${r.title}</h3><p>${r.challenge_brief||''}</p>
+        <div class="card-meta"><span class="status-tag ${r.status}">${statusLabel(r.status)}</span></div>
+        <div class="card-actions"><button class="primary" onclick="event.stopPropagation();openWorkspace('${r.id}')">进入评审工作台</button></div>
+      </div>`).join('')}</div>`}
+    </div>`;
+  }
+
+  if (!isOrg&&!isRider&&!isJudge) html += `<div class="empty-state">你的账号尚未分配角色，请联系管理员。<br><button onclick="window.location.href='/admin'">前往 Admin Console</button></div>`;
   container.innerHTML = html||'<div class="empty-state">暂无可用赛事</div>';
 }
 
@@ -804,12 +844,26 @@ function renderRiderWork(race, reg) {
   const work = App.works.find(w=>w.registration_id===reg.id);
 
   if (work) {
+    if (App.editingRiderWork && work.status !== 'locked') {
+      return `<div class="info-card"><h4>✏️ 编辑作品</h4>
+        <div class="form-group"><label>作品标题</label><input id="wk-edit-title" value="${work.title || ''}" placeholder="作品标题" /></div>
+        <div class="form-group"><label>摘要</label><textarea id="wk-edit-summary" placeholder="简要描述">${work.summary || ''}</textarea></div>
+        <div class="form-group"><label>代码仓库 URL (可选)</label><input id="wk-edit-repo" value="${work.repo_url || ''}" placeholder="https://github.com/..." /></div>
+        <div class="form-group"><label>描述 (可选)</label><textarea id="wk-edit-desc" placeholder="详细描述">${work.description || ''}</textarea></div>
+        <div class="action-bar">
+          <button class="primary" onclick="doUpdateWork('${work.id}')">保存更改</button>
+          <button onclick="cancelEditWork()">取消</button>
+        </div>
+      </div>`;
+    }
+
     return `<div class="info-card"><h4>📦 作品详情</h4>
       <div class="info-row"><span class="label">标题</span><span class="value">${work.title}</span></div>
       <div class="info-row"><span class="label">状态</span><span class="value"><span class="status-tag ${work.status}">${statusLabel(work.status)}</span></span></div>
       ${work.summary?`<div class="info-row"><span class="label">摘要</span><span class="value">${work.summary}</span></div>`:''}
+      ${work.description?`<div class="info-row"><span class="label">描述</span><span class="value" style="white-space:pre-wrap;">${work.description}</span></div>`:''}
       ${work.repo_url?`<div class="info-row"><span class="label">代码</span><span class="value"><a href="${work.repo_url}" target="_blank">${work.repo_url}</a></span></div>`:''}
-      ${work.status==='draft'?`<div class="action-bar"><button class="primary" onclick="doSubmitWork('${work.id}')">📤 提交作品</button></div>`:''}
+      ${work.status!=='locked'?`<div class="action-bar"><button class="primary" onclick="startEditWork()">✏️ 编辑作品</button></div>`:''}
     </div>`;
   }
 
@@ -820,6 +874,32 @@ function renderRiderWork(race, reg) {
     <div class="form-group"><label>描述 (可选)</label><textarea id="wk-desc" placeholder="详细描述"></textarea></div>
     <div class="action-bar"><button class="primary" onclick="doCreateWork('${reg.id}')">创建并提交作品</button></div>
   </div>`;
+}
+
+function startEditWork() { App.editingRiderWork = true; renderWorkspaceTab(); }
+function cancelEditWork() { App.editingRiderWork = false; renderWorkspaceTab(); }
+
+async function doUpdateWork(workId) {
+  const title = document.getElementById('wk-edit-title')?.value;
+  const summary = document.getElementById('wk-edit-summary')?.value;
+  const repoUrl = document.getElementById('wk-edit-repo')?.value;
+  const desc = document.getElementById('wk-edit-desc')?.value;
+  if (!title) { showFeedback('error','请输入作品标题'); return; }
+  try {
+    const res = await fetch(`/api/works/${workId}`, { 
+      method: 'PUT', 
+      headers: { 'Content-Type':'application/json' }, 
+      body: JSON.stringify({ title, summary, description: desc, repoUrl: repoUrl || undefined }) 
+    });
+    const data = await res.json();
+    if (res.ok) { 
+      showFeedback('ok', `✅ 作品已更新！`); 
+      App.editingRiderWork = false;
+      await refreshData(); 
+    } else { 
+      showFeedback('error', `❌ ${data.error||'更新失败'}`); 
+    }
+  } catch(e) { showFeedback('error',`请求失败: ${e.message}`); }
 }
 
 async function doCreateWork(regId) {
@@ -838,8 +918,6 @@ async function doCreateWork(regId) {
 
 async function doSubmitWork(workId) {
   try {
-    // For now, works are created as 'submitted' directly via POST /api/works
-    // This button serves as a visual confirmation for draft→submitted transition
     showFeedback('ok', '✅ 作品已提交！等待评审。');
     await refreshData();
   } catch(e) { showFeedback('error',`操作失败: ${e.message}`); }
