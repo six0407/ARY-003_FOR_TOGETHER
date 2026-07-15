@@ -25,23 +25,24 @@
 
   <!-- Hero Section -->
   <section class="hero-section" id="heroSection">
-    <div class="live-bar" id="liveBar" style="display:none">
+    <div class="live-bar glass-panel" id="liveBar" style="display:none; padding: 12px 24px;" onclick="location.href=document.getElementById('liveRaceLink').href">
       <span class="live-dot"></span>
-      <span id="liveRaceTitle"></span>
-      <a id="liveRaceLink" href="#" class="btn btn-primary btn-sm">进入 Live Hall →</a>
+      <span id="liveRaceTitle" style="font-weight:700;margin-right:8px;"></span>
+      <a id="liveRaceLink" href="#" style="display:none"></a>
+      <span style="font-size:12px;color:var(--muted)">点击查看直播大厅 →</span>
     </div>
-    <h1>Agent Racing Yard</h1>
-    <p class="subtitle">观看人类与 AI 协同编程的竞技场 — 骑行智能体，纵横三万里</p>
+    <h1 style="margin-top:20px;">Agent Racing Yard</h1>
+    <p class="subtitle">人类与 AI 协同编程的竞技场。骑行智能体，纵横三万里。</p>
   </section>
 
   <!-- Race Gallery -->
   <div class="page-container">
-    <div class="section-title">
+    <div class="section-title" style="justify-content:space-between">
       <span>🏁 赛事广场</span>
-      <span style="font-size:14px;font-weight:400;color:var(--muted)" id="raceCount"></span>
+      <span style="font-size:14px;font-weight:500;color:var(--muted)" id="raceCount"></span>
     </div>
     <div class="race-grid" id="raceGrid">
-      <div class="empty-state"><p>加载中...</p></div>
+      <div class="empty-state"><div class="icon">⏳</div><p>正在加载赛事列表...</p></div>
     </div>
   </div>
 
@@ -65,7 +66,7 @@
         renderRaces(races);
       } catch (e) {
         document.getElementById("raceGrid").innerHTML =
-          '<div class="empty-state"><p>无法连接服务器，请确认已启动 API 服务</p></div>';
+          '<div class="empty-state"><div class="icon">❌</div><p>无法连接服务器，请确认已启动 API 服务</p></div>';
       }
     }
 
@@ -74,8 +75,8 @@
       if (liveRace) {
         document.getElementById("liveBar").style.display = "inline-flex";
         document.getElementById("liveRaceTitle").textContent =
-          `🔥 正在直播：${liveRace.title}`;
-        document.getElementById("liveRaceLink").href = `/race.html?slug=${liveRace.slug}`;
+          `🔴 正在实况：${liveRace.title}`;
+        document.getElementById("liveRaceLink").href = `/live-hall?raceId=${liveRace.id}`;
       }
     }
 
@@ -110,17 +111,18 @@
       document.getElementById("raceGrid").innerHTML = races
         .map(
           (r) => `
-        <a href="/race.html?slug=${r.slug}" class="card race-card" style="text-decoration:none;color:inherit">
-          <div class="card-header">
+        <a href="/race.html?slug=${r.slug}" class="glass-card race-card" style="text-decoration:none;color:inherit;display:flex;flex-direction:column;">
+          <div class="card-header" style="border-bottom: 1px solid var(--line); padding: 18px 24px;">
             <span class="badge ${statusBadgeClass(r.status)}">${statusLabel(r.status)}</span>
-            <span style="font-size:13px;color:var(--muted)">${r.registration_count} 人报名</span>
+            <span style="font-size:13px;font-weight:600;color:var(--muted)">🏇 ${r.registration_count || 0} 人报名</span>
           </div>
-          <div class="card-body">
-            <div class="card-title">${esc(r.title)}</div>
-            <div class="card-text">${esc(r.challenge_brief || "暂无赛题描述")}</div>
-            <div class="meta">
-              <span>📅 ${fmtDate(r.time_windows?.race_start)}</span>
-              <span>🏆 ${(r.award_settings || []).length || 0} 奖项</span>
+          <div class="card-body" style="flex:1; display:flex; flex-direction:column; justify-content:space-between;">
+            <div>
+              <div class="card-title">${esc(r.title)}</div>
+              <div class="card-text" style="font-size:14px; margin-bottom:16px;">${esc(r.challenge_brief || "暂无赛题描述")}</div>
+            </div>
+            <div class="meta" style="border-top:1px solid rgba(0,0,0,0.03); padding-top:14px; margin-top:12px;">
+              <span style="font-weight:600;font-size:13px;color:var(--muted);">📅 开始: ${fmtDate(r.time_windows?.race_start)}</span>
             </div>
           </div>
         </a>`,
@@ -129,7 +131,15 @@
     }
 
     function esc(s) { return String(s).replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[c]); }
-    function fmtDate(d) { if (!d) return "待定"; return new Date(d).toLocaleDateString("zh-CN"); }
+    function fmtDate(d) {
+      if (!d) return "待定";
+      const date = new Date(d);
+      if (isNaN(date.getTime())) return d;
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
 
     load();
   </script>

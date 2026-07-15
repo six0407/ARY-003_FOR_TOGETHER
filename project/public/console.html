@@ -4,136 +4,503 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Race Console — ARY</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./app.css" />
   <style>
     /* ====== Console Layout ====== */
-    .console-shell { position:absolute;inset:0;display:flex;flex-direction:column;background:#f8fafc; }
-    .console-header { display:flex;align-items:center;justify-content:space-between;padding:8px 24px;background:#fff;border-bottom:1px solid var(--line);z-index:10; }
-    .console-header .brand { display:flex;align-items:center;gap:10px;text-decoration:none; }
-    .console-header .brand img { height:28px; }
-    .console-header .brand strong { font-size:16px;color:var(--blue-950);font-weight:950; }
-    .console-header .brand small { font-size:11px;color:var(--muted); }
-    .console-user { display:flex;align-items:center;gap:8px; }
-    .console-user .role-badge { display:inline-block;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:900;background:rgba(234,243,255,0.8);color:var(--blue-700); }
-    .console-user .user-name { font-size:14px;font-weight:900;color:var(--blue-950); }
-    .console-user button { min-height:28px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--glass);color:var(--blue-700);font-size:12px;font-weight:900;cursor:pointer; }
-    .console-user button.primary { color:#fff;background:linear-gradient(135deg,var(--blue-800),var(--blue-500));border:none; }
+    .console-shell { position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg-gradient); }
+    .console-header {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:12px 32px;
+      background:rgba(255, 255, 255, 0.75);
+      backdrop-filter:blur(20px);
+      -webkit-backdrop-filter:blur(20px);
+      border-bottom:1px solid var(--line);
+      z-index:10;
+    }
+    .console-header .brand {
+      display:flex;
+      align-items:center;
+      gap:12px;
+      text-decoration:none;
+      font-family:'Outfit',sans-serif;
+      font-weight:800;
+      color:var(--ink);
+    }
+    .console-header .brand img { height:32px; transition: transform 0.3s; }
+    .console-header .brand:hover img { transform: rotate(-8deg) scale(1.05); }
+    .console-header .brand strong { font-size:18px; letter-spacing: -0.3px; }
+    .console-header .brand small { font-size:11px;color:var(--muted);margin-left:4px;font-weight:600; }
+    .console-user { display:flex;align-items:center;gap:12px; }
+    .console-user .role-badge { display:inline-block;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:800;background:rgba(234,243,255,0.8);color:var(--primary); }
+    .console-user .user-name { font-size:14px;font-weight:700;color:var(--ink); }
+    .console-user button { 
+      min-height:32px;
+      padding:0 16px;
+      border:1px solid var(--line);
+      border-radius:var(--radius-sm);
+      background:var(--glass-bg);
+      color:var(--primary);
+      font-size:12px;
+      font-weight:700;
+      cursor:pointer;
+      transition:var(--transition);
+    }
+    .console-user button:hover {
+      background: hsla(var(--h-primary), 90%, 56%, 0.05);
+      border-color: hsla(var(--h-primary), 50%, 50%, 0.25);
+    }
+    .console-user button.primary {
+      color:#fff;
+      background:linear-gradient(135deg,var(--primary),hsl(var(--h-primary), 85%, 50%));
+      border:none;
+      box-shadow: 0 4px 12px -3px var(--primary);
+    }
+    .console-user button.primary:hover {
+      transform:translateY(-1px);
+      box-shadow: 0 6px 16px -2px var(--primary);
+    }
 
     .console-body { display:flex;flex:1;overflow:hidden; }
-    .console-sidebar { width:220px;background:#fff;border-right:1px solid var(--line);padding:16px 0;overflow-y:auto;flex-shrink:0; }
-    .console-sidebar .sidebar-section { padding:0 16px;margin-bottom:16px; }
-    .console-sidebar .sidebar-section h4 { font-size:11px;font-weight:950;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding:0 8px; }
-    .console-sidebar .sidebar-item { display:block;width:100%;padding:8px 12px;border:none;border-radius:8px;background:transparent;color:var(--blue-900);font-size:13px;font-weight:700;cursor:pointer;text-align:left;margin-bottom:2px; }
-    .console-sidebar .sidebar-item:hover { background:rgba(234,243,255,0.6); }
-    .console-sidebar .sidebar-item.active { background:rgba(34,107,230,0.12);color:var(--blue-700); }
-    .console-sidebar .sidebar-item .badge { float:right;padding:1px 8px;border-radius:10px;font-size:11px;background:rgba(34,107,230,0.1);color:var(--blue-700);font-weight:900; }
-    .console-sidebar .race-label { font-size:12px;color:var(--muted);padding:4px 12px 8px;font-weight:600; }
-    .console-sidebar .back-link { display:block;padding:10px 16px;margin-top:8px;border-top:1px solid var(--line);color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;text-decoration:none; }
-    .console-sidebar .back-link:hover { color:var(--blue-700); }
+    .console-sidebar {
+      width:240px;
+      background:rgba(255, 255, 255, 0.45);
+      backdrop-filter:blur(10px);
+      -webkit-backdrop-filter:blur(10px);
+      border-right:1px solid var(--line);
+      padding:24px 12px;
+      overflow-y:auto;
+      flex-shrink:0;
+    }
+    .console-sidebar .sidebar-section { margin-bottom:24px; }
+    .console-sidebar .sidebar-section h4 {
+      font-family:'Outfit',sans-serif;
+      font-size:11px;
+      font-weight:800;
+      color:var(--muted);
+      text-transform:uppercase;
+      letter-spacing:1px;
+      margin-bottom:10px;
+      padding:0 12px;
+    }
+    .console-sidebar .sidebar-item {
+      display:block;
+      width:100%;
+      padding:10px 16px;
+      border:none;
+      border-radius:var(--radius-md);
+      background:transparent;
+      color:var(--ink);
+      font-size:13.5px;
+      font-weight:600;
+      cursor:pointer;
+      text-align:left;
+      margin-bottom:4px;
+      transition:var(--transition);
+    }
+    .console-sidebar .sidebar-item:hover { background:rgba(0,0,0,0.03); }
+    .console-sidebar .sidebar-item.active {
+      background:hsla(var(--h-primary), 90%, 56%, 0.08);
+      color:var(--primary);
+      box-shadow: 0 2px 8px -2px var(--primary-glow);
+    }
+    .console-sidebar .sidebar-item .badge {
+      float:right;
+      padding:2px 8px;
+      border-radius:10px;
+      font-size:11px;
+      background:hsla(var(--h-primary), 90%, 56%, 0.1);
+      color:var(--primary);
+      font-weight:800;
+    }
+    .console-sidebar .race-label { font-size:12px;color:var(--muted);padding:4px 16px 8px;font-weight:700; }
+    .console-sidebar .back-link {
+      display:block;
+      padding:12px 16px;
+      margin-top:16px;
+      border-top:1px solid var(--line);
+      color:var(--muted);
+      font-size:13px;
+      font-weight:700;
+      cursor:pointer;
+      text-decoration:none;
+      transition:var(--transition);
+    }
+    .console-sidebar .back-link:hover { color:var(--primary); }
 
-    .console-main { flex:1;padding:24px 32px;overflow-y:auto; }
+    .console-main { flex:1;padding:32px 40px;overflow-y:auto; }
 
     /* ====== Console Home ====== */
-    .console-home h1 { font-size:32px;font-weight:950;color:var(--blue-950);margin-bottom:4px; }
-    .console-home .subtitle { color:var(--muted);font-size:15px;margin-bottom:24px; }
-    .console-section { margin-bottom:28px; }
-    .console-section h2 { font-size:18px;font-weight:950;color:var(--blue-900);margin-bottom:12px;display:flex;align-items:center;gap:8px; }
-    .console-section h2 .section-count { font-size:13px;color:var(--muted);font-weight:700; }
-    .console-card-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px; }
-    .console-card { padding:18px 20px;border:1px solid var(--line);border-radius:14px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.04);cursor:pointer;transition:all 0.2s; }
-    .console-card:hover { border-color:var(--blue-300);box-shadow:0 4px 12px rgba(34,107,230,0.08);transform:translateY(-2px); }
-    .console-card h3 { font-size:18px;font-weight:950;color:var(--blue-950);margin-bottom:6px; }
-    .console-card p { font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:10px; }
-    .console-card .card-meta { display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px; }
-    .console-card .card-meta span { font-size:12px;color:var(--blue-700);font-weight:700; }
-    .console-card .card-actions { display:flex;gap:6px; }
-    .console-card .card-actions button { min-height:30px;padding:0 14px;border:1px solid var(--line);border-radius:8px;background:var(--glass);color:var(--blue-800);font-size:12px;font-weight:900;cursor:pointer; }
-    .console-card .card-actions button.primary { color:#fff;background:linear-gradient(135deg,var(--blue-800),var(--blue-500));border:none; }
+    .console-home h1 {
+      font-family:'Outfit',sans-serif;
+      font-size:32px;
+      font-weight:900;
+      color:var(--ink);
+      margin-bottom:6px;
+      letter-spacing:-0.5px;
+    }
+    .console-home .subtitle { color:var(--muted);font-size:15px;margin-bottom:32px;font-weight:500; }
+    .console-section { margin-bottom:36px; }
+    .console-section h2 {
+      font-family:'Outfit',sans-serif;
+      font-size:20px;
+      font-weight:800;
+      color:var(--ink);
+      margin-bottom:16px;
+      display:flex;
+      align-items:center;
+      gap:10px;
+      letter-spacing:-0.2px;
+    }
+    .console-section h2 .section-count { font-size:14px;color:var(--muted);font-weight:600;margin-left:4px; }
+    .console-card-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:20px; }
+    
+    .console-card {
+      padding:24px;
+      border:1px solid var(--line);
+      border-radius:var(--radius-lg);
+      background:rgba(255,255,255,0.7);
+      backdrop-filter:blur(10px);
+      -webkit-backdrop-filter:blur(10px);
+      box-shadow:0 8px 30px rgba(0,0,0,0.02);
+      cursor:pointer;
+      transition:var(--transition);
+    }
+    .console-card:hover {
+      transform:translateY(-4px);
+      box-shadow: 0 16px 40px -10px hsla(var(--h-primary), 60%, 20%, 0.1);
+      border-color: hsla(var(--h-primary), 50%, 50%, 0.2);
+    }
+    .console-card h3 {
+      font-family:'Outfit',sans-serif;
+      font-size:19px;
+      font-weight:800;
+      color:var(--ink);
+      margin-bottom:8px;
+    }
+    .console-card p { font-size:13.5px;color:var(--muted);line-height:1.6;margin-bottom:16px;font-weight:500; }
+    .console-card .card-meta { display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px; }
+    .console-card .card-meta span { font-size:13px;color:var(--primary);font-weight:700; }
+    .console-card .card-actions { display:flex;gap:8px; }
+    .console-card .card-actions button {
+      min-height:34px;
+      padding:0 16px;
+      border:1px solid var(--line);
+      border-radius:var(--radius-sm);
+      background:var(--glass-bg);
+      color:var(--primary);
+      font-size:12.5px;
+      font-weight:700;
+      cursor:pointer;
+      transition:var(--transition);
+    }
+    .console-card .card-actions button:hover {
+      background:hsla(var(--h-primary), 90%, 56%, 0.05);
+      border-color:hsla(var(--h-primary), 50%, 50%, 0.25);
+    }
+    .console-card .card-actions button.primary {
+      color:#fff;
+      background:linear-gradient(135deg,var(--primary),hsl(var(--h-primary), 85%, 50%));
+      border:none;
+      box-shadow:0 4px 12px -3px var(--primary);
+    }
+    .console-card .card-actions button.primary:hover {
+      box-shadow:0 6px 16px -2px var(--primary);
+      transform:translateY(-1px);
+    }
 
     /* ====== Workspace ====== */
-    .workspace-top { margin-bottom:20px; }
-    .workspace-top .breadcrumb { font-size:12px;color:var(--muted);font-weight:700;margin-bottom:4px; }
-    .workspace-top .breadcrumb a { color:var(--blue-700);cursor:pointer;text-decoration:none; }
-    .workspace-top h1 { font-size:28px;font-weight:950;color:var(--blue-950);margin-bottom:4px; }
-    .workspace-top .race-status-line { display:flex;gap:12px;align-items:center;margin-bottom:8px; }
-    .workspace-panels { display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px; }
+    .workspace-top { margin-bottom:28px; }
+    .workspace-top .breadcrumb { font-size:13px;color:var(--muted);font-weight:700;margin-bottom:6px; }
+    .workspace-top .breadcrumb a { color:var(--primary);cursor:pointer;text-decoration:none;transition:var(--transition); }
+    .workspace-top .breadcrumb a:hover { color:var(--primary-hover); }
+    .workspace-top h1 {
+      font-family:'Outfit',sans-serif;
+      font-size:28px;
+      font-weight:900;
+      color:var(--ink);
+      margin-bottom:8px;
+      letter-spacing:-0.5px;
+    }
+    .workspace-top .race-status-line { display:flex;gap:12px;align-items:center;margin-bottom:12px; }
+    .workspace-panels { display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:20px; }
 
-    .info-card { padding:18px 20px;border:1px solid var(--line);border-radius:14px;background:#fff; }
-    .info-card h4 { font-size:13px;font-weight:950;color:var(--blue-700);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px; }
-    .info-card .info-row { display:flex;justify-content:space-between;padding:6px 0;font-size:14px;border-bottom:1px solid rgba(0,0,0,0.04); }
+    .info-card {
+      padding:24px;
+      border:1px solid var(--line);
+      border-radius:var(--radius-lg);
+      background:#fff;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.02);
+    }
+    .info-card h4 {
+      font-family:'Outfit',sans-serif;
+      font-size:13.5px;
+      font-weight:800;
+      color:var(--primary);
+      margin-bottom:16px;
+      text-transform:uppercase;
+      letter-spacing:0.5px;
+    }
+    .info-card .info-row { display:flex;justify-content:space-between;align-items:flex-start;padding:10px 0;font-size:14px;border-bottom:1px solid rgba(0,0,0,0.04);gap:16px; }
     .info-card .info-row:last-child { border-bottom:none; }
-    .info-card .info-row .label { color:var(--muted);font-weight:600; }
-    .info-card .info-row .value { font-weight:700;color:var(--blue-950); }
+    .info-card .info-row .label { color:var(--muted);font-weight:600;flex-shrink:0; }
+    .info-card .info-row .value { font-weight:700;color:var(--ink);text-align:right;word-break:break-word; }
 
-    .status-tag { display:inline-block;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:900; }
-    .status-tag.running { background:#eaf3ff;color:var(--blue-700); }
-    .status-tag.registration { background:#d1fae5;color:#065f46; }
-    .status-tag.completed { background:#f3f4f6;color:#6b7280; }
-    .status-tag.judging { background:#fef3c7;color:#92400e; }
-    .status-tag.submitted { background:#eaf3ff;color:var(--blue-700); }
-    .status-tag.approved { background:#d1fae5;color:#065f46; }
-    .status-tag.rejected { background:#fee2e2;color:#991b1b; }
-    .status-tag.draft { background:#f3f4f6;color:#9ca3af; }
+    .status-tag { display:inline-flex;align-items:center;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:800;text-transform:uppercase; }
+    .status-tag.running { background:hsl(217, 90%, 93%);color:hsl(217, 85%, 28%); }
+    .status-tag.registration { background:hsl(142, 70%, 93%);color:hsl(142, 75%, 25%); }
+    .status-tag.completed { background:hsl(215, 20%, 93%);color:hsl(215, 15%, 35%); }
+    .status-tag.judging { background:hsl(38, 92%, 92%);color:hsl(38, 90%, 25%); }
+    .status-tag.submitted { background:hsl(217, 90%, 93%);color:hsl(217, 85%, 28%); }
+    .status-tag.approved { background:hsl(142, 70%, 93%);color:hsl(142, 75%, 25%); }
+    .status-tag.rejected { background:hsl(0, 93%, 94%);color:hsl(0, 80%, 30%); }
+    .status-tag.draft { background:hsl(215, 15%, 90%);color:hsl(215, 15%, 45%); }
+
+    /* ====== Select & Button Styling ====== */
+    select {
+      padding: 6px 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: var(--glass-bg);
+      color: var(--ink);
+      font-weight: 600;
+      font-size: 13px;
+      outline: none;
+      transition: var(--transition);
+      cursor: pointer;
+    }
+    select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-glow);
+    }
+    button.primary {
+      color: #fff !important;
+      background: linear-gradient(135deg, var(--primary), hsl(var(--h-primary), 85%, 50%)) !important;
+      border: none !important;
+      box-shadow: 0 4px 12px -3px var(--primary) !important;
+      font-weight: 700;
+      cursor: pointer;
+      border-radius: var(--radius-sm);
+      transition: var(--transition);
+    }
+    button.primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px -2px var(--primary) !important;
+    }
+
+    /* ====== Workspace Tabs ====== */
+    .tab-bar {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 0;
+    }
+    .tab-item {
+      padding: 12px 16px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-size: 14.5px;
+      font-weight: 600;
+      cursor: pointer;
+      position: relative;
+      transition: var(--transition);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .tab-item:hover {
+      color: var(--ink);
+    }
+    .tab-item.active {
+      color: var(--primary);
+      font-weight: 800;
+    }
+    .tab-item.active::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--primary), var(--accent));
+      border-radius: 2px;
+    }
 
     /* ====== Login overlay ====== */
-    .login-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.4);backdrop-filter:blur(4px);z-index:100;display:flex;align-items:center;justify-content:center; }
-    .login-modal { background:#fff;border-radius:20px;padding:32px 40px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.2); }
-    .login-modal h2 { font-size:28px;font-weight:950;color:var(--blue-950);text-align:center;margin-bottom:4px; }
-    .login-modal .sub { text-align:center;color:var(--muted);font-size:14px;margin-bottom:20px; }
-    .login-user-option { display:block;width:100%;padding:14px 18px;border:1px solid var(--line);border-radius:12px;background:var(--glass);margin-bottom:8px;cursor:pointer;text-align:left;transition:all 0.15s; }
-    .login-user-option:hover { border-color:var(--blue-400);background:rgba(234,243,255,0.4); }
-    .login-user-option b { display:block;font-size:16px;color:var(--blue-950); }
-    .login-user-option span { font-size:12px;color:var(--blue-700);font-weight:700; }
-    .login-user-option small { display:block;font-size:12px;color:var(--muted);margin-top:2px; }
+    .login-overlay { position:fixed;inset:0;background:rgba(15,23,42,0.4);backdrop-filter:blur(8px);z-index:100;display:flex;align-items:center;justify-content:center; }
+    .login-modal {
+      background:#fff;
+      border-radius:24px;
+      padding:36px 44px;
+      max-width:460px;
+      width:90%;
+      box-shadow:0 30px 70px rgba(0,0,0,0.15);
+      border:1px solid rgba(255,255,255,0.8);
+    }
+    .login-modal h2 {
+      font-family:'Outfit',sans-serif;
+      font-size:28px;
+      font-weight:900;
+      color:var(--ink);
+      text-align:center;
+      margin-bottom:6px;
+      letter-spacing:-0.5px;
+    }
+    .login-modal .sub { text-align:center;color:var(--muted);font-size:14.5px;margin-bottom:24px;font-weight:500; }
+    
+    .login-user-option {
+      display:flex;
+      flex-direction:column;
+      width:100%;
+      padding:16px 20px;
+      border:1px solid var(--line);
+      border-radius:14px;
+      background:rgba(0,0,0,0.01);
+      margin-bottom:10px;
+      cursor:pointer;
+      text-align:left;
+      transition:var(--transition);
+    }
+    .login-user-option:hover {
+      border-color:hsla(var(--h-primary), 60%, 50%, 0.3);
+      background:hsla(var(--h-primary), 90%, 56%, 0.03);
+      transform:translateY(-1px);
+    }
+    .login-user-option b { display:block;font-size:16px;color:var(--ink);font-weight:700; }
+    .login-user-option span { font-size:12px;color:var(--primary);font-weight:700;margin-top:2px;text-transform:uppercase;letter-spacing:0.5px; }
+    .login-user-option small { display:block;font-size:12px;color:var(--muted);margin-top:4px;font-weight:500;line-height:1.4; }
 
     /* ====== Empty state ====== */
-    .empty-state { text-align:center;padding:40px 20px;color:var(--muted);font-size:15px;line-height:1.6; }
-    .empty-state button { margin-top:12px;min-height:36px;padding:0 20px;border:1px solid var(--line);border-radius:10px;background:var(--glass);color:var(--blue-700);font-size:13px;font-weight:900;cursor:pointer; }
-    .empty-state button.primary { color:#fff;background:linear-gradient(135deg,var(--blue-800),var(--blue-500));border:none; }
+    .empty-state { text-align:center;padding:48px 24px;color:var(--muted);font-size:15px;line-height:1.6; }
+    .empty-state button {
+      margin-top:16px;
+      min-height:36px;
+      padding:0 20px;
+      border:1px solid var(--line);
+      border-radius:var(--radius-md);
+      background:var(--glass-bg);
+      color:var(--primary);
+      font-size:13px;
+      font-weight:700;
+      cursor:pointer;
+      transition:var(--transition);
+    }
+    .empty-state button:hover {
+      background:hsla(var(--h-primary), 90%, 56%, 0.04);
+      border-color:hsla(var(--h-primary), 50%, 50%, 0.2);
+    }
+    .empty-state button.primary {
+      color:#fff;
+      background:linear-gradient(135deg,var(--primary),hsl(var(--h-primary), 85%, 50%));
+      border:none;
+      box-shadow: 0 6px 16px -4px var(--primary);
+    }
+    .empty-state button.primary:hover {
+      box-shadow: 0 8px 20px -3px var(--primary);
+      transform:translateY(-1px);
+    }
 
     /* ====== Constraint Checks ====== */
-    .constraint-checks { margin-top:14px;padding:14px 16px;border-radius:12px;background:rgba(248,250,252,0.8);border:1px solid rgba(34,107,230,0.08); }
-    .constraint-checks h4 { font-size:12px;font-weight:950;color:var(--blue-700);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px; }
-    .constraint-row { display:grid;grid-template-columns:20px 1fr;gap:6px;align-items:start;padding:4px 0;font-size:13px; }
-    .constraint-row span { font-weight:950;font-size:13px; }
-    .constraint-row.pass span { color:#0d9488; }
-    .constraint-row.fail span { color:#ef4444; }
-    .constraint-row small { display:block;margin-top:1px;color:var(--muted);font-size:11px; }
-    .review-flags { margin-top:10px;padding:8px 12px;border-radius:8px;background:#fef3c7;color:#92400e;font-size:12px;font-weight:700; }
+    .constraint-checks { margin-top:16px;padding:16px;border-radius:12px;background:rgba(0,0,0,0.02);border:1px solid var(--line); }
+    .constraint-checks h4 { font-family:'Outfit',sans-serif;font-size:12px;font-weight:800;color:var(--primary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px; }
+    .constraint-row { display:grid;grid-template-columns:22px 1fr;gap:6px;align-items:start;padding:4px 0;font-size:13.5px; }
+    .constraint-row span { font-weight:800;font-size:13.5px; }
+    .constraint-row.pass span { color:hsl(142, 70%, 40%); }
+    .constraint-row.fail span { color:hsl(0, 80%, 50%); }
+    .constraint-row small { display:block;margin-top:1px;color:var(--muted);font-size:11.5px;font-weight:500; }
+    .review-flags { margin-top:12px;padding:10px 14px;border-radius:8px;background:hsl(38, 92%, 92%);color:hsl(38, 90%, 25%);font-size:12.5px;font-weight:700;border:1px solid hsl(38, 80%, 80%); }
 
     /* ====== Forms & Actions ====== */
-    .action-bar { display:flex;flex-wrap:wrap;gap:8px;margin-top:14px; }
-    .action-bar button { min-height:32px;padding:0 14px;border:1px solid var(--line);border-radius:8px;background:var(--glass);color:var(--blue-800);font-size:12px;font-weight:900;cursor:pointer;transition:all 0.15s; }
-    .action-bar button:hover { transform:translateY(-1px); }
-    .action-bar button.primary { color:#fff;background:linear-gradient(135deg,var(--blue-800),var(--blue-500));border:none; }
-    .action-bar button.danger { color:#fff;background:linear-gradient(135deg,#dc2626,#ef4444);border:none; }
+    .action-bar { display:flex;flex-wrap:wrap;gap:10px;margin-top:20px; }
+    .action-bar button {
+      min-height:36px;
+      padding:0 20px;
+      border:1px solid var(--line);
+      border-radius:var(--radius-md);
+      background:var(--glass-bg);
+      color:var(--primary);
+      font-size:13px;
+      font-weight:700;
+      cursor:pointer;
+      transition:var(--transition);
+    }
+    .action-bar button:hover {
+      background:hsla(var(--h-primary), 90%, 56%, 0.04);
+      border-color:hsla(var(--h-primary), 50%, 50%, 0.2);
+      transform:translateY(-1px);
+    }
+    .action-bar button.primary {
+      color:#fff;
+      background:linear-gradient(135deg,var(--primary),hsl(var(--h-primary), 85%, 50%));
+      border:none;
+      box-shadow: 0 6px 16px -4px var(--primary);
+    }
+    .action-bar button.primary:hover {
+      box-shadow: 0 8px 20px -3px var(--primary);
+    }
+    .action-bar button.danger {
+      color:#fff;
+      background:linear-gradient(135deg,hsl(0, 75%, 50%),hsl(0, 85%, 45%));
+      border:none;
+      box-shadow: 0 6px 16px -4px hsl(0, 75%, 50%);
+    }
+    .action-bar button.danger:hover {
+      box-shadow: 0 8px 20px -3px hsl(0, 75%, 50%);
+    }
 
-    .form-group { margin-bottom:12px; }
-    .form-group label { display:block;font-size:12px;font-weight:900;color:var(--blue-700);margin-bottom:4px; }
-    .form-group input,.form-group textarea,.form-group select { width:100%;padding:8px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:#fff;color:var(--blue-950); }
-    .form-group textarea { min-height:60px;resize:vertical; }
-    .form-group input:focus,.form-group textarea:focus { outline:none;border-color:var(--blue-400);box-shadow:0 0 0 3px rgba(34,107,230,0.1); }
+    .form-group { margin-bottom:16px; }
+    .form-group label { display:block;font-size:12px;font-weight:800;color:var(--primary);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px; }
+    .form-group input,.form-group textarea,.form-group select {
+      width:100%;
+      padding:10px 14px;
+      border:1px solid var(--line);
+      border-radius:var(--radius-md);
+      font-size:14px;
+      background:#fff;
+      color:var(--ink);
+      outline:none;
+      transition:var(--transition);
+    }
+    .form-group textarea { min-height:80px;resize:vertical; }
+    .form-group input:focus,.form-group textarea:focus,.form-group select:focus {
+      border-color:var(--primary);
+      box-shadow:0 0 0 3px var(--primary-glow);
+    }
 
-    .feedback { margin-top:10px;padding:10px 14px;border-radius:10px;font-size:13px;line-height:1.4; }
-    .feedback.ok { background:#d1fae5;color:#065f46;border:1px solid #6ee7b7; }
-    .feedback.error { background:#fee2e2;color:#991b1b;border:1px solid #fca5a5; }
-    .feedback.info { background:#eaf3ff;color:var(--blue-800);border:1px solid #bfdbfe; }
+    .feedback { margin-top:12px;padding:12px 16px;border-radius:12px;font-size:13.5px;line-height:1.5;font-weight:600; }
+    .feedback.ok { background:hsl(142, 70%, 93%);color:hsl(142, 75%, 25%);border:1px solid hsl(142, 60%, 80%); }
+    .feedback.error { background:hsl(0, 93%, 94%);color:hsl(0, 80%, 30%);border:1px solid hsl(0, 80%, 80%); }
+    .feedback.info { background:hsl(217, 90%, 93%);color:hsl(217, 85%, 28%);border:1px solid hsl(217, 70%, 80%); }
 
     /* ====== CA Cards ====== */
-    .ca-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-top:10px; }
-    .ca-card { padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,0.6);font-size:13px; }
-    .ca-card b { display:block;color:var(--blue-950);font-size:14px;margin-bottom:3px; }
-    .ca-card span { display:block;color:var(--muted);font-size:11px;line-height:1.4; }
-    .ca-card.verified { border-left:3px solid #0d9488; }
-    .ca-card.failed { border-left:3px solid #ef4444;background:#fef2f2; }
-    .ca-card .ca-status { display:inline-block;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:900;margin-top:4px; }
-    .ca-card .ca-status.ok { background:#d1fae5;color:#065f46; }
-    .ca-card .ca-status.err { background:#fee2e2;color:#991b1b; }
+    .ca-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-top:12px; }
+    .ca-card {
+      padding:16px;
+      border-radius:12px;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,0.7);
+      font-size:13px;
+      transition:var(--transition);
+    }
+    .ca-card:hover {
+      border-color: hsla(var(--h-primary), 40%, 50%, 0.2);
+      background: #fff;
+    }
+    .ca-card b { display:block;color:var(--ink);font-size:14.5px;margin-bottom:4px;font-weight:700; }
+    .ca-card span { display:block;color:var(--muted);font-size:11.5px;line-height:1.5;font-weight:500; }
+    .ca-card.verified { border-left:4px solid hsl(142, 70%, 45%); }
+    .ca-card.failed { border-left:4px solid hsl(0, 80%, 50%);background:hsl(0, 90%, 99%); }
+    .ca-card .ca-status { display:inline-block;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:800;margin-top:8px;text-transform:uppercase; }
+    .ca-card .ca-status.ok { background:hsl(142, 70%, 93%);color:hsl(142, 75%, 25%); }
+    .ca-card .ca-status.err { background:hsl(0, 93%, 94%);color:hsl(0, 80%, 30%); }
 
     /* ====== Responsive ====== */
     @media (max-width:768px) {
-      .console-sidebar { width:160px; }
-      .console-main { padding:16px; }
+      .console-sidebar { width:180px; }
+      .console-main { padding:24px 20px; }
       .console-card-grid { grid-template-columns:1fr; }
     }
   </style>
@@ -181,7 +548,7 @@
       <div id="view-workspace" style="display:none;">
         <div class="workspace-top" id="workspace-top"></div>
         <!-- Workspace Tab Bar -->
-        <div style="display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--line);padding-bottom:0;" id="workspace-tabs"></div>
+        <div class="tab-bar" id="workspace-tabs"></div>
         <div id="workspace-content"></div>
         <div id="workspace-feedback" class="feedback" style="display:none;"></div>
       </div>
@@ -224,6 +591,18 @@ async function safeJson(res, defaultValue = []) {
   } catch(e) {
     return defaultValue;
   }
+}
+
+function fmtDate(d) {
+  if (!d) return '-';
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return d;
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const h = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${day} ${h}:${min}`;
 }
 
 // ====== App State ======
@@ -443,23 +822,23 @@ async function openWorkspace(raceId) {
   // Tabs
   const tabs = document.getElementById('workspace-tabs');
   if (isOrg) {
-    tabs.innerHTML = `<button class="sidebar-item active" onclick="switchWorkspaceTab('overview')" data-ws-tab="overview">📊 概览</button>
-      <button class="sidebar-item" onclick="switchWorkspaceTab('registrations')" data-ws-tab="registrations">📋 报名管理</button>
-      <button class="sidebar-item" onclick="switchWorkspaceTab('judges')" data-ws-tab="judges">👥 评委管理</button>
-      <button class="sidebar-item" onclick="switchWorkspaceTab('awards')" data-ws-tab="awards">🏆 奖项发布</button>
-      <button class="sidebar-item" onclick="switchWorkspaceTab('create-race')" data-ws-tab="create-race">➕ 创建赛事</button>`;
+    tabs.innerHTML = `<button class="tab-item active" onclick="switchWorkspaceTab('overview')" data-ws-tab="overview">📊 概览</button>
+      <button class="tab-item" onclick="switchWorkspaceTab('registrations')" data-ws-tab="registrations">📋 报名管理</button>
+      <button class="tab-item" onclick="switchWorkspaceTab('judges')" data-ws-tab="judges">👥 评委管理</button>
+      <button class="tab-item" onclick="switchWorkspaceTab('awards')" data-ws-tab="awards">🏆 奖项发布</button>
+      <button class="tab-item" onclick="switchWorkspaceTab('create-race')" data-ws-tab="create-race">➕ 创建赛事</button>`;
     App.wsTab = 'overview';
     switchWorkspaceTab('overview');
   } else if (isRider) {
     const reg = App.registrations.find(r=>r.race_id===raceId&&r.user_id===u.id);
-    tabs.innerHTML = `<button class="sidebar-item active" onclick="switchWorkspaceTab('rider-overview')" data-ws-tab="rider-overview">📊 概览</button>
-      <button class="sidebar-item" onclick="switchWorkspaceTab('rider-ca')" data-ws-tab="rider-ca">📡 CA 接入</button>
-      <button class="sidebar-item" onclick="switchWorkspaceTab('rider-work')" data-ws-tab="rider-work">📦 作品</button>`;
+    tabs.innerHTML = `<button class="tab-item active" onclick="switchWorkspaceTab('rider-overview')" data-ws-tab="rider-overview">📊 概览</button>
+      <button class="tab-item" onclick="switchWorkspaceTab('rider-ca')" data-ws-tab="rider-ca">📡 CA 接入</button>
+      <button class="tab-item" onclick="switchWorkspaceTab('rider-work')" data-ws-tab="rider-work">📦 作品</button>`;
     App.wsTab = 'rider-overview';
     switchWorkspaceTab('rider-overview');
   } else if (isJudge) {
-    tabs.innerHTML = `<button class="sidebar-item active" onclick="switchWorkspaceTab('judge-works')" data-ws-tab="judge-works">⚖️ 待评审</button>
-      <button class="sidebar-item" onclick="switchWorkspaceTab('judge-done')" data-ws-tab="judge-done">✅ 已评审</button>`;
+    tabs.innerHTML = `<button class="tab-item active" onclick="switchWorkspaceTab('judge-works')" data-ws-tab="judge-works">⚖️ 待评审</button>
+      <button class="tab-item" onclick="switchWorkspaceTab('judge-done')" data-ws-tab="judge-done">✅ 已评审</button>`;
     App.wsTab = 'judge-works';
     switchWorkspaceTab('judge-works');
   } else {
@@ -518,16 +897,19 @@ function renderOrgOverview(race) {
       <div class="info-row"><span class="label">报名 / 已通过 / 待审</span><span class="value">${regs.length} / ${approved.length} / ${pending.length}</span></div>
       <div class="info-row" style="border-top:1px solid var(--line);padding-top:10px;margin-top:10px;">
         <span class="label">变更状态</span>
-        <span class="value">
-          <select id="race-status-select" style="padding:4px 8px;border:1px solid var(--line);border-radius:6px;font-size:12px;">
+        <span class="value" style="display:flex; gap:8px;">
+          <select id="race-status-select">
             ${statusOptions.map((s,i) => `<option value="${s}" ${i===statusIdx?'selected':''}>${statusLabel(s)}</option>`).join('')}
           </select>
-          <button class="primary" style="min-height:26px;padding:0 10px;font-size:11px;margin-left:4px;" onclick="doUpdateRaceStatus('${race.id}')">更新</button>
+          <button class="primary" style="padding:6px 12px;font-size:12px;" onclick="doUpdateRaceStatus('${race.id}')">更新</button>
         </span>
       </div>
     </div>
     <div class="info-card"><h4>⏰ 赛程</h4>
-      ${race.time_windows?Object.entries(race.time_windows||{}).map(([k,v])=>`<div class="info-row"><span class="label">${k}</span><span class="value">${new Date(v).toLocaleDateString('zh-CN')}</span></div>`).join(''):'<div class="info-row"><span>未设置</span></div>'}
+      ${race.time_windows?Object.entries(race.time_windows||{}).map(([k,v])=>{
+        const labelMap = { registration_start:'报名开始', registration_end:'报名截止', race_start:'比赛开始', race_end:'比赛结束', submission_deadline:'提交截止' };
+        return `<div class="info-row"><span class="label">${labelMap[k]||k}</span><span class="value">${fmtDate(v)}</span></div>`;
+      }).join(''):'<div class="info-row"><span>未设置</span></div>'}
     </div>
     <div class="info-card"><h4>📤 作品提交</h4>
       <div class="info-row"><span class="label">已提交作品</span><span class="value">${App.works.filter(w=>w.race_id===race.id).length}</span></div>
@@ -548,14 +930,14 @@ async function doUpdateRaceStatus(raceId) {
 
 function renderOrgRegistrations(race) {
   const regs = App.registrations.filter(r=>r.race_id===race.id);
-  if (regs.length===0) return '<div class="empty-state">暂无报名</div>';
+  if (regs.length===0) return '<div class="empty-state"><div class="icon">📋</div><p>暂无报名数据</p></div>';
   return `<div class="workspace-panels">
     ${regs.map(reg => {
       const user = App.users.find(u=>u.id===reg.user_id);
       const rp = App.raceProjects.find(r=>r.registration_id===reg.id);
       return `<div class="info-card"><h4>${user?.display_name||'未知'} <span class="status-tag ${reg.status}" style="float:right;">${statusLabel(reg.status)}</span></h4>
         <div class="info-row"><span class="label">GitHub</span><span class="value">${user?.github_account_id||'-'}</span></div>
-        <div class="info-row"><span class="label">报名时间</span><span class="value">${reg.submitted_at?new Date(reg.submitted_at).toLocaleString('zh-CN'):'-'}</span></div>
+        <div class="info-row"><span class="label">报名时间</span><span class="value">${fmtDate(reg.submitted_at)}</span></div>
         ${rp?`<div class="info-row"><span class="label">RaceProject</span><span class="value">${rp.aggregate_ingestion_status} (${rp.connection_health})</span></div>`:''}
         ${reg.status==='submitted'?`<div class="action-bar" style="margin-top:10px;"><button class="primary" onclick="doApprove('${reg.id}')">✅ 通过</button><button class="danger" onclick="doReject('${reg.id}')">❌ 拒绝</button></div>`:''}
         ${reg.review_flags&&reg.review_flags.length?`<div class="review-flags">⚠ ${reg.review_flags.map(f=>f.flagType||f).join(', ')}</div>`:''}
@@ -666,7 +1048,7 @@ function renderOrgAwards(race) {
   return `<div class="workspace-panels">
     <div class="info-card" style="max-width:100%;"><h4>🏆 已发布 (${existing.length})</h4>
       ${existing.length===0?'<div style="color:var(--muted);font-size:13px;padding:8px 0;">暂无</div>'
-      :existing.map(a=>{const reg=regs.find(r=>r.id===a.registration_id);const user=reg?App.users.find(u=>u.id===reg.user_id):null;return `<div class="info-row"><span class="label">#${a.rank} ${a.award_name}</span><span class="value">${user?.display_name||'?'} ✅</span></div>`;}).join('')}
+      :existing.map(a=>{const reg=App.registrations.find(r=>r.id===a.registration_id);const user=reg?App.users.find(u=>u.id===reg.user_id):null;return `<div class="info-row"><span class="label">#${a.rank} ${a.award_name}</span><span class="value">${user?.display_name||'?'} ✅</span></div>`;}).join('')}
     </div>
     <div class="info-card" style="max-width:100%;"><h4>➕ 创建奖项</h4>
       ${regs.length===0?'<div style="color:var(--muted);font-size:13px;padding:8px 0;">没有已通过的选手</div>'
@@ -708,9 +1090,9 @@ async function doPublishAward(awardId) {
 
 function renderJudgeWorks(race) {
   const u = App.currentUser;
-  if (!u) return '<div class="empty-state">请先登录</div>';
+  if (!u) return '<div class="empty-state"><div class="icon">🔒</div><p>请先登录</p></div>';
   const assignments = (App.judgeAssignments||[]).filter(ja=>ja.judge_user_id===u.id&&ja.race_id===race.id&&ja.status==='assigned');
-  if (assignments.length===0) return '<div class="empty-state">暂无待评审的作品</div>';
+  if (assignments.length===0) return '<div class="empty-state"><div class="icon">⚖️</div><p>暂无待评审的作品</p></div>';
   return `<div class="workspace-panels">${assignments.map(a => {
     const w = App.works.find(x=>x.id===a.work_id);
     if (!w) return '';
@@ -733,7 +1115,7 @@ function renderJudgeWorks(race) {
 function renderJudgeDone(race) {
   const u = App.currentUser;
   const records = (App.judgingRecords||[]).filter(jr=>jr.judge_user_id===u.id);
-  if (records.length===0) return '<div class="empty-state">暂无已评审的作品</div>';
+  if (records.length===0) return '<div class="empty-state"><div class="icon">✅</div><p>暂无已评审的作品</p></div>';
   return `<div class="workspace-panels">${records.map(jr => `<div class="info-card"><h4>📄 ${jr.work_title||'作品'}</h4>
     <div class="info-row"><span class="label">作品分</span><span class="value">${jr.score_result?.score||jr.score_result||'?'}/10</span></div>
     <div class="info-row"><span class="label">骑行分</span><span class="value">${jr.score_riding?.score||jr.score_riding||'?'}/10</span></div>
@@ -768,11 +1150,13 @@ function renderRiderOverview(race, reg) {
     const regsForRace = App.registrations.filter(x=>x.race_id===reg.race_id&&x.user_id===reg.user_id);
     const rpsForReg = App.raceProjects.filter(x=>x.registration_id===reg.id);
     const worksForReg = App.works.filter(x=>x.registration_id===reg.id);
-    constraints = `<div class="constraint-checks"><h4>DEV-1 约束校验</h4>
-      <div class="constraint-row ${regsForRace.length===1?'pass':'fail'}"><span>${regsForRace.length===1?'✓':'✗'}</span> 唯一 Registration<small>${regsForRace.length===1?'(raceId,userId) 唯一键正常':'违反唯一键'}</small></div>
-      <div class="constraint-row ${rpsForReg.length===1?'pass':'fail'}"><span>${rpsForReg.length===1?'✓':'✗'}</span> RaceProject<small>${rpsForReg.length===0?'未 approved':rpsForReg.length===1?'幂等通过':'异常'}</small></div>
-      <div class="constraint-row ${worksForReg.length<=1?'pass':'fail'}"><span>${worksForReg.length<=1?'✓':'✗'}</span> 主 Work 唯一<small>${worksForReg.length<=1?'≤1 通过':'违反'}</small></div>
-      <div class="constraint-row pass"><span>✓</span> CAConnection<small>${ccs.length} 个连接</small></div>
+    constraints = `<div class="info-card"><h4>🛡️ 参赛数据完整性校验</h4>
+      <div class="constraint-checks" style="margin-top:0; border:none; background:transparent; padding:0;">
+        <div class="constraint-row ${regsForRace.length===1?'pass':'fail'}"><span>${regsForRace.length===1?'✓':'✗'}</span><div>报名唯一性校验<small>${regsForRace.length===1?'正常 (无冲突)':'异常 (重复报名)'}</small></div></div>
+        <div class="constraint-row ${rpsForReg.length===1?'pass':'fail'}"><span>${rpsForReg.length===1?'✓':'✗'}</span><div>专属参赛项目建立<small>${rpsForReg.length===0?'未审批通过':rpsForReg.length===1?'已成功配置':'配置异常'}</small></div></div>
+        <div class="constraint-row ${worksForReg.length<=1?'pass':'fail'}"><span>${worksForReg.length<=1?'✓':'✗'}</span><div>作品提报限额校验<small>${worksForReg.length<=1?'正常 (未超额)':'超出提交限额'}</small></div></div>
+        <div class="constraint-row pass"><span>✓</span><div>骑行数据模拟连接<small>已接入 ${ccs.length} 个连接</small></div></div>
+      </div>
     </div>`;
   }
 
@@ -780,8 +1164,8 @@ function renderRiderOverview(race, reg) {
   return `<div class="workspace-panels">
     <div class="info-card"><h4>📋 参赛状态</h4>
       <div class="info-row"><span class="label">报名</span><span class="value"><span class="status-tag ${reg?.status||'none'}">${statusLabel(reg?.status||'未报名')}</span></span></div>
-      ${reg?`<div class="info-row"><span class="label">提交时间</span><span class="value">${reg.submitted_at?new Date(reg.submitted_at).toLocaleString('zh-CN'):'-'}</span></div>`:''}
-      ${reg?.approved_at?`<div class="info-row"><span class="label">审核通过</span><span class="value">${new Date(reg.approved_at).toLocaleString('zh-CN')}</span></div>`:''}
+      ${reg?`<div class="info-row"><span class="label">提交时间</span><span class="value">${fmtDate(reg.submitted_at)}</span></div>`:''}
+      ${reg?.approved_at?`<div class="info-row"><span class="label">审核通过</span><span class="value">${fmtDate(reg.approved_at)}</span></div>`:''}
       <div class="info-row"><span class="label">赛事</span><span class="value">${race.title}</span></div>
       <div class="info-row"><span class="label">赛题</span><span class="value">${race.challenge_brief||'-'}</span></div>
     </div>
@@ -796,7 +1180,8 @@ function renderRiderOverview(race, reg) {
       <div class="action-bar"><button onclick="switchWorkspaceTab('rider-work')">管理作品</button></div>
     </div>`:reg?.status==='approved'?`<div class="info-card"><h4>📦 作品</h4><div style="color:var(--muted);font-size:13px;padding:8px 0;"><button class="primary" onclick="switchWorkspaceTab('rider-work')">创建作品</button></div></div>`:''}
     ${ccs.length?`<div class="info-card"><h4>📡 CA 连接 (${ccs.length})</h4>${ccs.map(c=>`<div class="info-row"><span class="label">${c.connector_id||c.ca_type||'未知'}</span><span class="value"><span class="status-tag ${c.ingestion_status}">${c.ingestion_status}</span></span></div>`).join('')}</div>`:''}
-  </div>${constraints}`;
+    ${constraints}
+  </div>`;
 }
 
 function renderRiderCA(race, reg) {

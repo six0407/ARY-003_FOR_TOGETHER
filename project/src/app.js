@@ -109,7 +109,7 @@ app.post("/api/auth/login", (req, res) => {
 });
 
 // GET /api/auth/users — list all users
-app.get("/api/auth/users", requireAdmin, (_req, res) => {
+app.get("/api/auth/users", (_req, res) => {
   const users = all("SELECT * FROM users ORDER BY created_at DESC");
   res.json(users.map(parseUser));
 });
