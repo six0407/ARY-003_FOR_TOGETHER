@@ -92,9 +92,10 @@ function renderAuthButton(containerId = 'auth-area') {
     const roleLabels = (u.roles || []).map(r =>
       ({ rider: '🏇', judge: '⚖️', organizer: '📋', admin: '🔧' }[r] || r)
     ).join(' ');
+    const avatarUrl = u.profile?.avatar_url || u.avatar_url || '';
     area.innerHTML = `
       <a href="/console" class="btn btn-outline btn-sm" style="text-decoration:none;">
-        ${u.avatar_url ? `<img src="${u.avatar_url}" style="width:20px;height:20px;border-radius:50%;vertical-align:middle;margin-right:4px;">` : ''}
+        ${avatarUrl ? `<img src="${avatarUrl}" style="width:20px;height:20px;border-radius:50%;vertical-align:middle;margin-right:4px;">` : ''}
         ${u.display_name || u.github_account_id}
         ${roleLabels ? `<span class="role-badge-sm">${roleLabels}</span>` : ''}
       </a>

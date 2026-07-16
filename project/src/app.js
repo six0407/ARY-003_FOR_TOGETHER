@@ -202,18 +202,21 @@ app.get("/api/auth/github/callback", async (req, res, next) => {
         location: gh.location || "",
       });
       run(
-        `INSERT INTO users (id, slug, display_name, email, github_account_id, avatar_url, roles, profile, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, '[]', ?, ?, ?)`,
-        [id, gh.login, gh.name || gh.login, gh.email || `${gh.login}@users.noreply.github.com`,
-         gh.login, gh.avatar_url || "", profile, t, t],
+        `INSERT INTO users (id, slug, display_name, github_account_id, roles, profile, created_at, updated_at)
+         VALUES (?, ?, ?, ?, '[]', ?, ?, ?)`,
+        [id, gh.login, gh.name || gh.login,
+         gh.login, profile, t, t],
       );
       save();
       logger.info("auth", "New user auto-created via GitHub OAuth", { id, login: gh.login });
       user = get("SELECT * FROM users WHERE id = ?", [id]);
     } else {
-      // Update avatar/profile on each login
+      // Update profile on each login
+      const existingProfile = JSON.parse(user.profile || "{}");
+      existingProfile.avatar_url = gh.avatar_url || existingProfile.avatar_url;
+      if (gh.name) existingProfile.name = gh.name;
       const patch = {
-        avatar_url: gh.avatar_url || user.avatar_url,
+        profile: JSON.stringify(existingProfile),
         updated_at: now(),
       };
       if (gh.name) patch.display_name = gh.name;
