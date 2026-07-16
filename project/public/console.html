@@ -831,15 +831,15 @@ async function openWorkspace(raceId) {
 
   // Fetch fresh data
   const regsRes = await fetch('/api/registrations');
-  App.registrations = await regsRes.json();
+  App.registrations = await safeJson(regsRes, []);
   const rpRes = await fetch('/api/race-projects');
-  App.raceProjects = await rpRes.json();
+  App.raceProjects = await safeJson(rpRes, []);
   const worksRes = await fetch('/api/works');
-  App.works = await worksRes.json();
+  App.works = await safeJson(worksRes, []);
   const jaRes = await fetch('/api/judge-assignments');
-  App.judgeAssignments = await jaRes.json();
+  App.judgeAssignments = await safeJson(jaRes, []);
   const jrRes = await fetch('/api/judging-records');
-  App.judgingRecords = await jrRes.json();
+  App.judgingRecords = await safeJson(jrRes, []);
 
   document.getElementById('workspace-top').innerHTML = `
     <div class="breadcrumb"><a onclick="navigate('home')">Console Home</a> / ${race.title}</div>
