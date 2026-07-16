@@ -298,3 +298,86 @@ PUT  /api/reports/:id/publish  — 发布报告
 ### 状态更新
 - `STATUS.md`：REL-1 ✅ 完成、OPS-1 ✅ 完成
 - `PLAN.md`：近期待更新
+
+## 2026-07-16 — 004 第一轮迭代（GitHub OAuth + 统一响应 + 文档清理 + 种子数据增强）
+
+### 背景
+003 全部交付完成后，三位同学合入了 3 个 PR（何争霖 UI 重构+安全修复、六次元后端中间件架构）。本轮在继承这些成果的基础上，完成了响应格式统一、GitHub OAuth 登录、公开页适配、种子数据增强等 004 方向的工作。
+
+### 一、后端中间件迁移收尾（修复六次元 PR 遗留问题）
+
+| 问题 | 修复 |
+| --- | --- |
+| `requireAuth` 重复声明 | app.js 同时 import 了 auth-guard.js 又定义同名函数 → 删除内联版本 |
+| ~60 处旧格式 `res.json({ ok: true })` / `res.status(400).json({ error })` | 全部迁移为 `ok(res, {...})` / `badRequest(res, msg)` 等 response.js helper |
+| `dotenv` 包缺失 | `import "dotenv/config"` 已写但未安装 → `npm install dotenv` |
+| `api.test.js` 测试适配 | 7 处断言适配 `{ success, data }` 新格式 + 注册测试补 auth header |
+
+**结果：** 46 条架构测试 + 16 条 API 测试 = **62 条全部通过**
+
+### 二、GitHub OAuth 登录（PR #6）
+
+| 文件 | 变更 |
+| --- | --- |
+| `project/src/app.js` | 新增 `GET /api/auth/github`（跳转 GitHub 授权）+ `GET /api/auth/github/callback`（回调处理，自动建号/登录） |
+| `project/src/config.js` | 新增 `githubClientId` / `githubClientSecret` / `githubCallbackUrl` |
+| `project/.env.example` | 新增 GitHub OAuth 环境变量说明 |
+| `project/.env` | 实际配置（已加入 `.gitignore`，不提交密钥） |
+| `project/public/console.html` | 登录弹窗增加"Login with GitHub"按钮；`safeJson()` 适配统一响应；URL hash token 恢复 |
+| `.github/workflows/test.yml` | 🆕 CI/CD — PR 和 push 自动跑测试 |
+
+### 三、公开页 OAuth 适配（9 个页面）
+
+| 文件 | 变更 |
+| --- | --- |
+| `project/public/auth.js` | 🆕 共享认证模块：`safeFetch()`、`AUTH` 状态管理（localStorage 跨标签页同步）、GitHub OAuth 回调处理、header 渲染 |
+| `home.html` | `fetch` → `safeFetch`，header 加 `#auth-area` |
+| `race.html` | 同上 + **报名按钮登录态感知**（未登录→显示"登录后报名"，已登录→显示"立即报名"），新增 `doRegister()` |
+| `works.html` | 同上 |
+| `work.html` | 同上（3 个 API 调用改为 safeFetch） |
+| `results.html` | 同上 |
+| `cooperation.html` | 同上 |
+| `rider.html` | 同上（5 个 API 调用改为 safeFetch） |
+| `review.html` | 同上（3 个 API 调用改为 safeFetch） |
+| `live-hall.html` | `fetch` → `safeFetch`（纯展示，无需登录按钮） |
+
+### 四、Bug 修复
+
+| Bug | 原因 | 修复 |
+| --- | --- | --- |
+| Console 工作台报 `filter is not a function` | `openWorkspace()` 和 `refreshData()` 直接用 `.json()` 没解包 `{success, data}` | 改用 `safeJson()` 统一解包 |
+| 重启后种子数据不更新 | `INSERT OR IGNORE` + 旧 SQLite 文件 | `seedDemo()` 先 `DELETE FROM` 全表再重建 |
+| 公开页与 Console 登录不同步 | `sessionStorage` 各标签页独立 | 改用 `localStorage` 跨标签页共享 |
+| OAuth 回调 500 | INSERT 用了不存在的 `email`/`avatar_url` 列 | 修正为 `profile` JSON 字段 |
+| GitHub OAuth 未配置时白页 | 跳转 GitHub 后因为没有 client_id 报错 | 未配置时显示友好提示 + 跳转 Console |
+| avatar 不显示 | auth.js 读 `u.avatar_url` 但数据在 `u.profile.avatar_url` | 改为 `u.profile?.avatar_url \|\| u.avatar_url` |
+
+### 五、种子数据增强
+
+新增 2 个演示选手 + 多赛事报名数据，未登录即可看到：
+
+| 赛事 | 状态 | 选手 |
+| --- | --- | --- |
+| 第一届 Agent 骑行挑战赛 | 进行中 | 🏇 2 人（骑手小明 + Alice Wang） |
+| 极速构建挑战赛 | 报名中 | 🏇 2 人（Alice 待审 + Bob 已通过） |
+| 架构大师赛 | 已结束 | 🏇 0 人 |
+
+### 六、文档清理
+
+| 操作 | 文件 |
+| --- | --- |
+| 🗑️ 删除 | `ux-1-closure.md`（与 closure-delivery.md 重复） |
+| 🗑️ 删除 | `ux-1-m2-input-final.md`（与 m2-input-final-checklist.md 重复） |
+| 📝 精简 | `01-ary-project-analysis.md` → Agent 导读（重复内容改为交叉引用） |
+| 📝 更新 | `004PLAN.md` → 记录 004 方向 |
+
+### 验证
+
+| 测试套件 | 结果 |
+| --- | --- |
+| `npm test`（46 条架构测试） | ✅ 全部通过 |
+| `node --test test/api.test.js`（16 条 API 测试） | ✅ 全部通过 |
+| GitHub Pages 公开页面加载 | ✅ 9/9 正常 |
+| Console 登录/工作台 | ✅ 所有信息面板正常 |
+| GitHub OAuth 全流程 | ✅ 跳转→授权→回调→Console 登录 |
+| 跨标签页 session 同步 | ✅ localStorage 共享 |
