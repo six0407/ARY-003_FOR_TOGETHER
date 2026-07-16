@@ -18,7 +18,7 @@
       <a href="/results.html">Results</a>
       <a href="/cooperation.html">Cooperation</a>
     </nav>
-    <div class="user-area">
+    <div class="user-area" id="auth-area">
       <a href="/console" class="btn btn-outline btn-sm">Console →</a>
     </div>
   </header>
@@ -31,15 +31,16 @@
     Agent Racing Yard · MVP v0.2
   </footer>
 
+  <script src="/auth.js"></script>
   <script>
     const slug = new URLSearchParams(location.search).get("slug");
     if (!slug) location.href = "/home.html";
 
     async function load() {
       try {
-        const res = await fetch(`/api/races/${slug}`);
-        if (!res.ok) throw new Error("Not found");
-        const race = await res.json();
+        const race = await safeFetch(`/api/races/${slug}`);
+        if (!race) throw new Error("Not found");
+        await initAuth();
         render(race);
       } catch {
         document.getElementById("app").innerHTML =
@@ -70,7 +71,11 @@
       // CTA button based on race status
       let ctaHtml = '';
       if (race.status === 'registration') {
-        ctaHtml = `<a href="/console" class="btn btn-primary" style="display:inline-flex;margin-top:16px;">📝 立即报名参赛</a>`;
+        if (AUTH.loggedIn) {
+          ctaHtml = `<button onclick="doRegister('${race.id}')" class="btn btn-primary" style="display:inline-flex;margin-top:16px;">📝 立即报名参赛</button>`;
+        } else {
+          ctaHtml = `<button onclick="AUTH.login()" class="btn btn-primary" style="display:inline-flex;margin-top:16px;">🔑 登录后报名参赛</button>`;
+        }
       } else if (['running','submitting','judging'].includes(race.status)) {
         ctaHtml = `<a href="/live-hall?raceId=${race.id}" class="btn btn-primary" style="display:inline-flex;margin-top:16px;">🔴 进入实况直播大厅</a>`;
       } else if (race.status === 'completed') {
@@ -156,6 +161,26 @@
           </div>` : ""}
         </div>
       `;
+    }
+
+    async function doRegister(raceId) {
+      const user = AUTH.user;
+      if (!user) { AUTH.login(); return; }
+      try {
+        const res = await fetch(`/api/registrations`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${AUTH.token}` },
+          body: JSON.stringify({ raceId, userId: user.id }),
+        });
+        if (res.ok) {
+          alert('✅ 报名成功！请前往 Console 查看您的参赛状态。');
+        } else {
+          const err = await res.json();
+          alert(`❌ 报名失败: ${err.error?.message || err.error || '请稍后重试'}`);
+        }
+      } catch (e) {
+        alert(`❌ 请求失败: ${e.message}`);
+      }
     }
 
     load();

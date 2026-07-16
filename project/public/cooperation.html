@@ -5,7 +5,7 @@
 <header class="ary-header">
   <a class="brand" href="/home.html"><img src="/assets/logo-horse-compass-transparent.png" alt=""/><span>Agent Racing Yard</span></a>
   <nav><a href="/home.html">Races</a><a href="/works.html">Works</a><a href="/results.html">Results</a><a href="/cooperation.html" class="active">Cooperation</a></nav>
-  <div class="user-area"><a href="/console" class="btn btn-outline btn-sm">Console →</a></div>
+  <div class="user-area" id="auth-area"><a href="/console" class="btn btn-outline btn-sm">Console →</a></div>
 </header>
 <div class="page-container">
   <h1 style="font-size:28px;margin-bottom:8px">🤝 合作与参与</h1>
@@ -19,8 +19,10 @@
   <div id="race-stats" style="margin-top:32px;display:grid;grid-template-columns:repeat(4,1fr);gap:16px;"></div>
 </div>
 <footer class="ary-footer">Agent Racing Yard · MVP v0.2</footer>
+<script src="/auth.js"></script>
 <script>
-  fetch('/api/stats').then(r=>r.json()).then(s=>{
+  initAuth();
+  safeFetch('/api/stats').then(s=>{ if(s)
     document.getElementById('race-stats').innerHTML=
       `<div class="card" style="text-align:center;padding:24px;"><div style="font-size:36px;font-weight:950;color:var(--blue-700)">${s.total_races}</div><div style="font-size:14px;color:var(--muted);margin-top:4px;">总赛事</div></div>
        <div class="card" style="text-align:center;padding:24px;"><div style="font-size:36px;font-weight:950;color:var(--blue-700)">${s.total_riders||0}</div><div style="font-size:14px;color:var(--muted);margin-top:4px;">参赛骑手</div></div>

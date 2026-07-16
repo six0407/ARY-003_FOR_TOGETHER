@@ -184,6 +184,7 @@
   </div>
 </div>
 
+<script src="/auth.js"></script>
 <script>
   let pollTimer = null;
   const raceId = new URLSearchParams(location.search).get('raceId');
@@ -194,9 +195,8 @@
       return;
     }
     try {
-      const res = await fetch(`/api/live-hall/${raceId}`);
-      if (!res.ok) throw new Error(res.status === 404 ? '赛事不存在' : '加载失败');
-      const data = await res.json();
+      const data = await safeFetch(`/api/live-hall/${raceId}`);
+      if (!data) throw new Error('赛事不存在或加载失败');
       renderLiveHall(data);
     } catch(e) {
       await showRaceSelector(`加载失败: ${e.message}`);
@@ -205,8 +205,7 @@
 
   async function showRaceSelector(reason) {
     try {
-      const res = await fetch('/api/races');
-      const races = await res.json();
+      const races = await safeFetch('/api/races');
       const runningOrActive = races.filter(r => r.status === 'running' || r.status === 'registration' || r.status === 'judging' || r.status === 'completed');
       
       const optionsHtml = runningOrActive.map(r => `<option value="${r.id}">${r.title} (${statusLabel(r.status)})</option>`).join('');

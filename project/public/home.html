@@ -18,7 +18,7 @@
       <a href="/results.html">Results</a>
       <a href="/cooperation.html">Cooperation</a>
     </nav>
-    <div class="user-area">
+    <div class="user-area" id="auth-area">
       <a href="/console" class="btn btn-outline btn-sm">Console →</a>
     </div>
   </header>
@@ -50,17 +50,17 @@
     Agent Racing Yard · MVP v0.2 · 骑行智能体 纵横三万里
   </footer>
 
+  <script src="/auth.js"></script>
   <script>
     const API = "";
 
     async function load() {
       try {
-        const [statsRes, racesRes] = await Promise.all([
-          fetch(API + "/api/stats"),
-          fetch(API + "/api/races"),
+        const [stats, races] = await Promise.all([
+          safeFetch(API + "/api/stats"),
+          safeFetch(API + "/api/races"),
         ]);
-        const stats = await statsRes.json();
-        const races = await racesRes.json();
+        if (!stats || !races) throw new Error("数据加载失败");
 
         renderHero(stats, races);
         renderRaces(races);
@@ -142,6 +142,7 @@
     }
 
     load();
+    initAuth();
   </script>
 </body>
 </html>
