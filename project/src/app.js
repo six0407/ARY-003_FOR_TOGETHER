@@ -140,6 +140,16 @@ app.put("/api/auth/users/:id/roles", requireAuth, requireRole("admin"), (req, re
 
 // GET /api/auth/github — redirect to GitHub authorization page
 app.get("/api/auth/github", (_req, res) => {
+  if (!config.githubClientId) {
+    // Friendly message when OAuth not configured
+    return res.status(200).send(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>GitHub OAuth 配置</title><style>body{font-family:Outfit,system-ui;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f8fafc;color:#1e293b;}.card{max-width:520px;padding:40px;background:white;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.08);text-align:center;}h1{font-size:22px;margin-bottom:12px;}p{font-size:15px;line-height:1.6;color:#64748b;margin-bottom:24px;}code{background:#f1f5f9;padding:2px 8px;border-radius:4px;font-size:13px;}.btn{display:inline-block;padding:10px 24px;background:#24292f;color:white;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;}</style></head><body><div class="card">
+<h1>🔑 GitHub OAuth 未配置</h1>
+<p>要使用 GitHub 登录，需要在项目根目录创建 <code>.env</code> 文件（参考 <code>.env.example</code>），填入从 <a href="https://github.com/settings/developers" target="_blank">GitHub OAuth Apps</a> 获取的 <code>GITHUB_CLIENT_ID</code> 和 <code>GITHUB_CLIENT_SECRET</code>。</p>
+<p>您也可以使用 Console 中的 <strong>演示账号</strong> 登录测试全部功能。</p>
+<a href="/console" class="btn">前往 Console →</a>
+</div></body></html>`);
+  }
   const url = "https://github.com/login/oauth/authorize" +
     `?client_id=${config.githubClientId}` +
     `&redirect_uri=${config.githubCallbackUrl}` +

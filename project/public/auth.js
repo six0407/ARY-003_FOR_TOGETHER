@@ -14,8 +14,26 @@ async function safeFetch(url, opts = {}) {
 
 // ====== Auth State ======
 const AUTH = {
-  get token() { return sessionStorage.getItem('ary_token'); },
-  set token(v) { if (v) sessionStorage.setItem('ary_token', v); else sessionStorage.removeItem('ary_token'); },
+  get token() {
+    // Check shared storage (localStorage persists across tabs)
+    const t = localStorage.getItem('ary_token') || sessionStorage.getItem('ary_token');
+    if (t) return t;
+    // Fallback: Console stores user ID in sessionStorage
+    const uid = sessionStorage.getItem('ary_console_user');
+    if (uid) return uid.startsWith('demo-token-') ? uid : `demo-token-${uid}`;
+    return null;
+  },
+  set token(v) {
+    if (v) {
+      localStorage.setItem('ary_token', v);
+      sessionStorage.setItem('ary_token', v);
+      sessionStorage.setItem('ary_console_user', v.replace('demo-token-', ''));
+    } else {
+      localStorage.removeItem('ary_token');
+      sessionStorage.removeItem('ary_token');
+      sessionStorage.removeItem('ary_console_user');
+    }
+  },
   get user() {
     const raw = sessionStorage.getItem('ary_user');
     return raw ? JSON.parse(raw) : null;
@@ -28,16 +46,19 @@ const AUTH = {
 
   // Restore session from saved data
   restore() {
-    const saved = sessionStorage.getItem('ary_token');
-    if (saved) return true;
-    // Check for OAuth callback token in URL
+    // Check OAuth callback token first
     if (window.location.hash.startsWith('#token=')) {
       const token = window.location.hash.replace('#token=', '');
       this.token = token;
       history.replaceState(null, '', window.location.pathname + window.location.search);
       return true;
     }
-    return false;
+    // Check console demo session (ary_console_user → token)
+    const consoleUid = sessionStorage.getItem('ary_console_user');
+    if (consoleUid && !this.token) {
+      this.token = `demo-token-${consoleUid}`;
+    }
+    return !!this.token;
   },
 
   // Login via GitHub OAuth

@@ -640,6 +640,7 @@ async function init() {
       const token = window.location.hash.replace('#token=', '');
       const uid = token.replace('demo-token-', '');
       sessionStorage.setItem('ary_console_user', uid);
+      sessionStorage.setItem('ary_token', token); // Sync with auth.js
       history.replaceState(null, '', window.location.pathname); // Clean URL
     }
 
@@ -690,13 +691,20 @@ function hideLogin() {
 }
 function doLogin(userId) {
   App.currentUser = App.users.find(u => u.id === userId);
-  if (App.currentUser) sessionStorage.setItem('ary_console_user', userId);
+  if (App.currentUser) {
+    sessionStorage.setItem('ary_console_user', userId);
+    sessionStorage.setItem('ary_token', `demo-token-${userId}`);
+    localStorage.setItem('ary_token', `demo-token-${userId}`);
+  }
   hideLogin();
   renderHeader(); renderSidebar(); navigate('home');
 }
 function doLogout() {
   App.currentUser = null;
   sessionStorage.removeItem('ary_console_user');
+  sessionStorage.removeItem('ary_token');
+  localStorage.removeItem('ary_token');
+  sessionStorage.removeItem('ary_user');
   renderHeader(); renderSidebar(); navigate('home');
 }
 function renderLoginModal() {
