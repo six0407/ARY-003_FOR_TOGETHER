@@ -776,8 +776,9 @@ function renderHome() {
   if (isOrg) {
     const myRaces = App.races.filter(r => (r.organizer_user_ids||[]).includes(u.id));
     html += `<div class="console-section"><h2>📋 我主办的赛事 <span class="section-count">(${myRaces.length})</span></h2>
-      ${myRaces.length===0?'<div class="empty-state" style="padding:24px;">暂无主办的赛事</div>'
-      :`<div class="console-card-grid">${myRaces.map(r => `<div class="console-card" onclick="openWorkspace('${r.id}')">
+      ${myRaces.length===0
+        ?`<div class="empty-state" style="padding:24px;"><p>暂无主办的赛事</p><button class="primary" onclick="openWorkspace('create')" style="margin-top:12px;">➕ 创建首场赛事</button></div>`
+        :`<div class="console-card-grid">${myRaces.map(r => `<div class="console-card" onclick="openWorkspace('${r.id}')">
         <h3>${r.title}</h3><p>${r.challenge_brief||''}</p>
         <div class="card-meta"><span class="status-tag ${r.status}">${statusLabel(r.status)}</span><span>🏇 ${r.registration_count||0} 人报名</span></div>
         <div class="card-actions"><button class="primary" onclick="event.stopPropagation();openWorkspace('${r.id}')">进入工作台</button></div>
@@ -983,12 +984,35 @@ async function doApprove(regId) {
 
 function renderCreateRaceForm() {
   return `<div class="info-card" style="max-width:600px;"><h4>➕ 创建新赛事</h4>
+    <div style="margin-bottom:20px;padding:16px;background:hsl(217,90%,96%);border-radius:12px;">
+      <label style="font-weight:700;font-size:14px;display:block;margin-bottom:8px;">📦 从 GitHub 仓库导入</label>
+      <div style="display:flex;gap:8px;">
+        <input id="cr-gh-repo" placeholder="owner/repo（例如：sysu-se/agent-race-2026）" style="flex:1;padding:10px 14px;border:1px solid var(--line);border-radius:10px;font-size:14px;" />
+        <button onclick="doImportGitHubRepo()" style="padding:10px 18px;background:#24292f;color:#fff;border:none;border-radius:10px;font-weight:700;cursor:pointer;white-space:nowrap;">导入</button>
+      </div>
+      <div style="margin-top:8px;font-size:12px;color:var(--muted);">自动填充赛事名称、描述等信息</div>
+    </div>
     <div class="form-group"><label>赛事名称</label><input id="cr-title" placeholder="例如：第二届 Agent 骑行挑战赛" /></div>
     <div class="form-group"><label>赛题描述</label><textarea id="cr-brief" placeholder="描述比赛任务和目标"></textarea></div>
     <div class="form-group"><label>Slug (URL标识)</label><input id="cr-slug" placeholder="second-agent-race" /></div>
     <div class="form-group"><label>状态</label><select id="cr-status"><option value="draft">草稿</option><option value="registration" selected>直接开放报名</option></select></div>
     <div class="action-bar"><button class="primary" onclick="doCreateRace()">创建赛事</button></div>
   </div>`;
+}
+
+async function doImportGitHubRepo() {
+  const repo = document.getElementById('cr-gh-repo')?.value.trim();
+  if (!repo) { showFeedback('error','请输入仓库名称（格式: owner/repo）'); return; }
+  try {
+    showFeedback('ok', '⏳ 正在从 GitHub 获取仓库信息...');
+    const res = await fetch(`https://api.github.com/repos/${repo}`);
+    if (!res.ok) { showFeedback('error', `仓库不存在或无权访问: ${repo}`); return; }
+    const data = await res.json();
+    document.getElementById('cr-title').value = data.name || data.full_name;
+    document.getElementById('cr-brief').value = data.description || '';
+    document.getElementById('cr-slug').value = data.name?.toLowerCase().replace(/[^a-z0-9-]/g,'-') || repo.split('/')[1];
+    showFeedback('ok', `✅ 已从 ${data.full_name} 导入！请确认信息后创建赛事`);
+  } catch(e) { showFeedback('error', `导入失败: ${e.message}`); }
 }
 
 async function doCreateRace() {
