@@ -8,6 +8,9 @@ export const config = {
   githubClientId: process.env.GITHUB_CLIENT_ID || "",
   githubClientSecret: process.env.GITHUB_CLIENT_SECRET || "",
   githubCallbackUrl: process.env.GITHUB_CALLBACK_URL || "http://localhost:3000/api/auth/github/callback",
+  // Auto-assign 'rider' role to users belonging to this GitHub org (empty = disabled)
+  githubOrg: process.env.GITHUB_ORG || "",
+};
   logLevel: process.env.LOG_LEVEL || "info",
   isDev: (process.env.NODE_ENV || "development") !== "production",
 };

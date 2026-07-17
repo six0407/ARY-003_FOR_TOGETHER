@@ -201,14 +201,38 @@ app.get("/api/auth/github/callback", async (req, res, next) => {
         blog: gh.blog || "",
         location: gh.location || "",
       });
+
+      // Determine default roles
+      let defaultRoles = [];
+      // Rule 1: First user ever gets admin + organizer
+      const userCount = all("SELECT COUNT(*) as count FROM users")[0]?.count || 0;
+      if (userCount === 0) {
+        defaultRoles = ["admin", "organizer"];
+        logger.info("auth", "First user — granted admin+organizer roles", { login: gh.login });
+      }
+      // Rule 2: Belongs to configured GitHub org → rider
+      if (config.githubOrg) {
+        try {
+          const orgRes = await fetch(`https://api.github.com/orgs/${config.githubOrg}/members/${gh.login}`, {
+            headers: { Authorization: `Bearer ${tokenData.access_token}` },
+          });
+          if (orgRes.ok) {
+            defaultRoles.push("rider");
+            logger.info("auth", "Org member — granted rider role", { login: gh.login, org: config.githubOrg });
+          }
+        } catch (orgErr) {
+          logger.warn("auth", "Failed to check GitHub org membership", { login: gh.login, error: orgErr.message });
+        }
+      }
+
       run(
         `INSERT INTO users (id, slug, display_name, github_account_id, roles, profile, created_at, updated_at)
-         VALUES (?, ?, ?, ?, '[]', ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, gh.login, gh.name || gh.login,
-         gh.login, profile, t, t],
+         gh.login, JSON.stringify(defaultRoles), profile, t, t],
       );
       save();
-      logger.info("auth", "New user auto-created via GitHub OAuth", { id, login: gh.login });
+      logger.info("auth", "New user auto-created via GitHub OAuth", { id, login: gh.login, roles: defaultRoles });
       user = get("SELECT * FROM users WHERE id = ?", [id]);
     } else {
       // Update profile on each login
@@ -222,6 +246,24 @@ app.get("/api/auth/github/callback", async (req, res, next) => {
       if (gh.name) patch.display_name = gh.name;
       update("users", user.id, patch);
       save();
+
+      // Upgrade: check org membership for existing users with empty roles
+      if (config.githubOrg && (!user.roles || JSON.parse(user.roles).length === 0)) {
+        try {
+          const orgRes = await fetch(`https://api.github.com/orgs/${config.githubOrg}/members/${gh.login}`, {
+            headers: { Authorization: `Bearer ${tokenData.access_token}` },
+          });
+          if (orgRes.ok) {
+            const currentRoles = JSON.parse(user.roles || "[]");
+            currentRoles.push("rider");
+            update("users", user.id, { roles: JSON.stringify(currentRoles), updated_at: now() });
+            save();
+            logger.info("auth", "Existing user upgraded — granted rider role", { login: gh.login, org: config.githubOrg });
+          }
+        } catch (orgErr) {
+          logger.warn("auth", "Failed to check GitHub org membership for existing user", { login: gh.login, error: orgErr.message });
+        }
+      }
     }
 
     // 4. Parse and return (same format as demo login)
