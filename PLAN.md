@@ -12,12 +12,17 @@
 | --- | --- | --- |
 | **GitHub OAuth 登录** | 后端路由 + 回调 + 自动建号 + Demo 模式兼容 | ✅ |
 | **API 响应格式统一** | 全部 ~60 处路由改用 response.js helpers | ✅ |
-| **公开页 OAuth 适配** | 共享 auth.js，9 个页面全部适配登录态 | ✅ |
-| **跨标签页登录同步** | localStorage 共享 token | ✅ |
+| **公开页 OAuth 适配** | 共享 auth.js，10 个页面全部适配登录态 + admin.html 等效 safeJson | ✅ |
+| **跨标签页登录同步** | localStorage 共享 token（localStorage + sessionStorage 双策略） | ✅ |
+| **Console/Admin OAuth 适配** | console.html/admin.html 改用 safeJson + 跨标签登录检测 | ✅ |
 | **CI/CD 自动测试** | GitHub Actions — push/PR 自动跑 62 条测试 | ✅ |
-| **种子数据增强** | 5 用户（3 rider）、多选手注册 | ✅ |
+| **种子数据增强** | 5 用户（3 rider、organizer、judge）、多选手注册、投影、award | ✅ |
 | **文档清理** | 删 2 重复文件，精简 Agent 导读 | ✅ |
 | **API 测试修复** | 修复 requireAuth 重复声明 + 响应格式适配 | ✅ |
+| **Live Hall 赛道动画** | Canvas 赛道渲染（速度线/曲线/骑手标记/Time Gate/Signal）从设计原型提取集成 | ✅ |
+| **前端响应格式对齐** | 全部公开页使用 safeFetch/safeJson 消费统一 `{ success, data }` 格式 | ✅ |
+| **赛事仓库关联** | races 表 repo_url 字段，创建赛事支持从 GitHub 仓库导入 | ✅ |
+| **Live Hall 语法修复** | 修复游离反引号导致 JS 整块不执行的问题 | ✅ |
 
 ## 004 待办方向（待团队决策）
 | **实时通讯** | HTTP 轮询（10 秒） | 评估 WebSocket 长连接 |

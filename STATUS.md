@@ -8,19 +8,37 @@
 * 三位同学合入 3 个 PR（PR #1 何争霖权限修复 / PR #2 六次元后端中间件 / PR #3 何争霖UI重构）。
 * 004 阶段已完成：GitHub OAuth 登录、API 响应格式统一、公开页 OAuth 适配、CI/CD、种子数据增强。
 * `npm test` — **46 条全部通过**（架构测试）+ **16 条 API 测试全部通过**（六次元新增）。
-* 后端 45+ 个 API 端点（Express + SQLite），前端 15 个 HTML 页面。
-* 当前阶段：004 PR #6（feat/github-oauth-login）等待合并到 master。
+* 后端 45+ 个 API 端点（Express + SQLite），前端 15 个 HTML/JS 页面 + 共享 `auth.js` 模块。
+* 当前阶段：004 后续——Live Hall 赛道动画集成、前端回复格式全面对齐。
 
 ## 当前结论
 
-* GitHub OAuth 登录已实现（需配置 `.env` 中的 `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`）。
-* 所有 API 响应已统一为 `{ success: true/false, data/error }` 格式。
-* 公开页面（home/race/works/work/results/review/rider/cooperation/live-hall）已适配 OAuth 登录态。
-* 共享 `auth.js` 模块，所有页面通过 `localStorage` 跨标签页共享登录状态。
+### GitHub OAuth 登录
+
+* **后端路由**：`GET /api/auth/github` 跳转授权 + `GET /api/auth/github/callback` 回调处理（code → access_token → GitHub user → ARY 用户创建/更新）。
+* **自动角色分配**：首用户自动 admin（排除 `gh-` 前缀演示用户）；`GITHUB_ORG` 环境变量指定组织成员自动 rider 角色。
+* **Demo 兼容**：Demo 模式（免密选用户）与 GitHub OAuth 双模式并行，用户可自由选择。
+* **共享认证模块**：`auth.js` 提供 `safeFetch()`（自动解包 `{ success, data }`）+ `AUTH` 对象（token 管理/localStorage 跨标签同步/登录登出/`fetchMe()`）。
+* **页面适配**：10 个页面已引用 `auth.js`（home/works/race/results/rider/work/review/cooperation/live-hall/console）；`admin.html` 使用内联等效实现。
+* **密钥管理**：`.env` 已加入 `.gitignore`，不跟踪 Git 历史。
+* **OAuth 未配置提示**：无 `.env` 配置时显示友好错误信息。
+
+### 前端修补与增强
+
+* **响应格式统一**：后端 ~60 端点全部改用 `response.js` helpers（`ok/list/created/badRequest/unauthorized/forbidden/notFound`）；前端全部通过 `safeFetch`/`safeJson` 解包消费。
+* **Live Hall 赛道动画**：从 `design-prototype/` 提取 Canvas 动画代码（速度线/赛道路线/骑手标记/Time Gate/Signal 信号），集成到 `live-hall.html`。
+* **语法修复**：修复 `live-hall.html` 中游离反引号导致的 JS 解析失败（stray backtick 阻塞整个 `<script>` 执行）。
+* **跨标签登录同步**：`localStorage` + `sessionStorage` 双存储策略实现多标签页登录态同步。
+* **种子数据重建**：`seedDemo()` 从 `INSERT OR IGNORE` 改为 `DELETE FROM` + `INSERT` 方案，每次重启获取干净数据。
+* **赛事仓库关联**：`races` 表新增 `repo_url` 字段，创建赛事支持从 GitHub 仓库导入。
+* **Console/Admin 修复**：`refreshData()`/`openWorkspace()` 改用 `safeJson` 解包；Admin Console 修复登录检测流程。
+
+### 其他结论
+
+* 所有 API 已统一为 `{ success: true/false, data/error }` 格式。
 * CI/CD 已就绪（`.github/workflows/test.yml` — push/PR 自动跑 62 条测试）。
 * 文档已清理（删除 2 个重复文件 `ux-1-closure.md`、`ux-1-m2-input-final.md`，精简 Agent 导读）。
-* Demo 种子数据增强至 5 个用户（organizer + 3 rider + judge）、3 场赛事、多名选手。
-* 登录为 Demo 模式 + GitHub OAuth 双模式并行。
+* 种子数据：5 个用户（organizer + 3 rider + judge）、3 场赛事、多选手注册/作品/投影/award。
 * 实时通讯仍采用 HTTP 轮询（10 秒），未实现 WebSocket。
 * `AgentDocs/03-open-questions.md` 中的技术选型与架构升级决策尚未落地。
 
@@ -42,10 +60,14 @@
 | `OPS-1` 赛事值守 / 回滚 / 赛后归档 | ✅ 完成 | backup.sh（4 种模式）+ OPS_CHECKLIST.md（含冻结窗口/彩排/值守/回滚/归档）。 | `project/backup.sh`、`project/OPS_CHECKLIST.md` |
 | `004-OAUTH` GitHub OAuth 登录 | ✅ 完成 | 后端跳转+回调路由 + 自动建号 + Demo 兼容 + 友好提示。 | `project/src/app.js` L92-L188 |
 | `004-FORMAT` API 响应格式统一 | ✅ 完成 | 全部路由改用 response.js helpers（ok/list/created/badRequest/unauthorized/forbidden/notFound）。 | `project/src/app.js` |
-| `004-AUTHJS` 公开页 OAuth 适配 | ✅ 完成 | 共享 auth.js（safeFetch + 登录态 + localStorge 跨标签页）+ 9 个页面全部适配。 | `project/public/auth.js` |
+| `004-AUTHJS` 公开页 OAuth 适配 | ✅ 完成 | 共享 auth.js（safeFetch + 登录态 + localStorage 跨标签页）+ 10 个页面全部适配。 | `project/public/auth.js` |
 | `004-CICD` CI/CD 自动测试 | ✅ 完成 | GitHub Actions — push/PR 自动跑 62 条测试。 | `.github/workflows/test.yml` |
-| `004-SEED` 种子数据增强 | ✅ 完成 | 5 用户（3 rider）+ 多选手注册 + 多作品。 | `project/src/db.js` |
+| `004-SEED` 种子数据增强 | ✅ 完成 | 5 用户（3 rider）+ 多选手注册 + 多作品 + 投影 + award。 | `project/src/db.js` |
 | `004-DOCS` 文档清理 | ✅ 完成 | 删除 2 个重复文件，精简 Agent 导读。 | `docs/`、`AgentDocs/` |
+| `004-CONSOLE` Console/Admin OAuth 适配 | ✅ 完成 | console.html/admin.html 改用 safeJson + 跨标签登录同步。 | `project/public/console.html`、`project/public/admin.html` |
+| `004-LIVEHALL-CANVAS` Live Hall 赛道动画 | ✅ 完成 | Canvas 赛道渲染（速度线/赛道曲线/骑手标记/Time Gate/Signal）+ 修复 stray backtick 语法错误。 | `project/public/live-hall.html` |
+| `004-FRONT-ALIGN` 前端响应格式对齐 | ✅ 完成 | 全部公开页使用 safeFetch/safeJson 消费统一响应格式。 | `project/public/*.html` |
+| `004-REPO-URL` 赛事仓库关联 | ✅ 完成 | races 表 repo_url 字段 + 创建赛事从 GitHub 导入。 | `project/src/app.js`、`project/public/console.html` |
 
 ## 证据索引
 
