@@ -318,14 +318,14 @@ app.post("/api/races", requireAuth, (req, res) => {
   if (existing) return conflictErr(res, `slug "${raceSlug}" 已存在`);
 
   run(
-    `INSERT INTO races (id, slug, title, challenge_brief, status, time_windows, award_settings, organizer_user_ids, created_by_user_id, visibility, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO races (id, slug, title, challenge_brief, status, time_windows, award_settings, organizer_user_ids, created_by_user_id, visibility, repo_url, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id, raceSlug, title, challengeBrief || "", status || "draft",
       JSON.stringify({}), JSON.stringify([]),
       JSON.stringify(organizerUserIds || []),
       organizerUserIds?.[0] || req.user?.id || "system",
-      "public", t, t,
+      "public", req.body.repoUrl || "", t, t,
     ],
   );
   save();

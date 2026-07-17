@@ -123,6 +123,7 @@ function runMigrations() {
       organizer_user_ids TEXT DEFAULT '[]',
       created_by_user_id TEXT DEFAULT '',
       visibility TEXT DEFAULT 'public',
+      repo_url TEXT DEFAULT '',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       version INTEGER DEFAULT 1

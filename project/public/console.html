@@ -1020,9 +1020,10 @@ async function doCreateRace() {
   const brief = document.getElementById('cr-brief')?.value;
   const slug = document.getElementById('cr-slug')?.value;
   const status = document.getElementById('cr-status')?.value;
+  const repoUrl = document.getElementById('cr-gh-repo')?.value.trim() || undefined;
   if (!title) { showFeedback('error','请输入赛事名称'); return; }
   try {
-    const res = await fetch('/api/races', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title, challengeBrief:brief, slug, status, organizerUserIds:[App.currentUser?.id]}) });
+    const res = await fetch('/api/races', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title, challengeBrief:brief, slug, status, repoUrl, organizerUserIds:[App.currentUser?.id]}) });
     if (!res.ok) { const d=await res.json(); showFeedback('error',`创建失败: ${d.error||'未知错误'}`); return; }
     showFeedback('ok', `✅ 赛事「${title}」创建成功！`);
     await refreshData();
