@@ -18,7 +18,7 @@
       <a href="/results.html">Results</a>
       <a href="/cooperation.html">Cooperation</a>
     </nav>
-    <div class="user-area">
+    <div class="user-area" id="auth-area">
       <a href="/console" class="btn btn-outline btn-sm">Console →</a>
     </div>
   </header>
@@ -31,15 +31,16 @@
     Agent Racing Yard · MVP v0.2
   </footer>
 
+  <script src="/auth.js"></script>
   <script>
     const slug = new URLSearchParams(location.search).get("slug");
     if (!slug) location.href = "/home.html";
 
     async function load() {
       try {
-        const res = await fetch(`/api/races/${slug}`);
-        if (!res.ok) throw new Error("Not found");
-        const race = await res.json();
+        const race = await safeFetch(`/api/races/${slug}`);
+        if (!race) throw new Error("Not found");
+        await initAuth();
         render(race);
       } catch {
         document.getElementById("app").innerHTML =
@@ -53,59 +54,143 @@
     }
 
     function esc(s) { return String(s).replace(/[<>&"]/g, c => ({ "<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;" })[c]); }
-    function fmt(d) { if (!d) return "待定"; return new Date(d).toLocaleString("zh-CN"); }
+    function fmt(d) {
+      if (!d) return "待定";
+      const date = new Date(d);
+      if (isNaN(date.getTime())) return d;
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const h = String(date.getHours()).padStart(2, '0');
+      const min = String(date.getMinutes()).padStart(2, '0');
+      return `${y}-${m}-${day} ${h}:${min}`;
+    }
 
     function render(race) {
       const tw = race.time_windows || {};
       // CTA button based on race status
       let ctaHtml = '';
       if (race.status === 'registration') {
-        ctaHtml = `<a href="/console" class="btn btn-primary" style="display:inline-block;margin-top:12px;padding:10px 24px;border:none;border-radius:10px;background:linear-gradient(135deg,var(--blue-800),var(--blue-500));color:#fff;font-size:15px;font-weight:900;cursor:pointer;text-decoration:none;">📝 立即报名</a>`;
+        if (AUTH.loggedIn) {
+          ctaHtml = `<button onclick="doRegister('${race.id}')" class="btn btn-primary" style="display:inline-flex;margin-top:16px;">📝 立即报名参赛</button>`;
+        } else {
+          ctaHtml = `<button onclick="AUTH.login()" class="btn btn-primary" style="display:inline-flex;margin-top:16px;">🔑 登录后报名参赛</button>`;
+        }
       } else if (['running','submitting','judging'].includes(race.status)) {
-        ctaHtml = `<a href="/live-hall?raceId=${race.slug}" class="btn btn-primary" style="display:inline-block;margin-top:12px;padding:10px 24px;border:none;border-radius:10px;background:linear-gradient(135deg,var(--blue-800),var(--blue-500));color:#fff;font-size:15px;font-weight:900;cursor:pointer;text-decoration:none;">🔴 进入 Live Hall</a>`;
+        ctaHtml = `<a href="/live-hall?raceId=${race.id}" class="btn btn-primary" style="display:inline-flex;margin-top:16px;">🔴 进入实况直播大厅</a>`;
       } else if (race.status === 'completed') {
-        ctaHtml = `<a href="/review" class="btn btn-primary" style="display:inline-block;margin-top:12px;padding:10px 24px;border:none;border-radius:10px;background:linear-gradient(135deg,var(--blue-800),var(--blue-500));color:#fff;font-size:15px;font-weight:900;cursor:pointer;text-decoration:none;">📋 查看评审总结</a>`;
+        ctaHtml = `<a href="/review" class="btn btn-primary" style="display:inline-flex;margin-top:16px;">📋 查看评审总结</a>`;
       }
       document.getElementById("app").innerHTML = `
-        <div class="race-detail-header">
+        <div class="race-detail-header" style="max-width: 900px; margin: 0 auto;">
           <span class="badge badge-${["running","submitting","judging"].includes(race.status)?"live":race.status==="registration"?"registration":race.status==="completed"?"completed":"draft"}">${statusLabel(race.status)}</span>
-          <h1>${esc(race.title)}</h1>
-          <p style="color:var(--muted);font-size:15px;margin:8px 0 16px">${esc(race.challenge_brief)}</p>
+          <h1 style="font-family:'Outfit',sans-serif;font-size:32px;font-weight:900;margin-top:12px;color:var(--ink);">${esc(race.title)}</h1>
+          <p style="color:var(--muted);font-size:16px;margin:12px 0 20px;line-height:1.6;font-weight:500;">${esc(race.challenge_brief)}</p>
           ${ctaHtml}
-          <div class="tl-row" style="margin-top:16px">
-            <div class="tl-item"><strong>报名</strong> ${fmt(tw.registration_start)} ~ ${fmt(tw.registration_end)}</div>
-            <div class="tl-item"><strong>比赛</strong> ${fmt(tw.race_start)} ~ ${fmt(tw.race_end)}</div>
-            ${tw.submission_deadline ? `<div class="tl-item"><strong>提交截止</strong> ${fmt(tw.submission_deadline)}</div>` : ""}
-            <div class="tl-item"><strong>报名人数</strong> ${race.registration_count}</div>
-            <div class="tl-item"><strong>作品数</strong> ${race.work_count}</div>
+          
+          <div class="tl-row" style="margin-top:24px">
+            <div class="tl-item">
+              <strong>报名开始</strong>
+              <div class="time-box"><span class="time-value">${fmt(tw.registration_start)}</span></div>
+            </div>
+            <div class="tl-item">
+              <strong>报名截止</strong>
+              <div class="time-box"><span class="time-value">${fmt(tw.registration_end)}</span></div>
+            </div>
+            <div class="tl-item">
+              <strong>比赛周期</strong>
+              <div class="time-range-display">
+                <div class="time-box start"><span class="time-label">开始</span><span class="time-value">${fmt(tw.race_start)}</span></div>
+                <div class="time-box end"><span class="time-label">结束</span><span class="time-value">${fmt(tw.race_end)}</span></div>
+              </div>
+            </div>
+            ${tw.submission_deadline ? `
+            <div class="tl-item">
+              <strong>提交截止</strong>
+              <div class="time-box"><span class="time-value">${fmt(tw.submission_deadline)}</span></div>
+            </div>` : ""}
+            <div class="tl-item">
+              <strong>报名骑手</strong>
+              <div class="metric-display">
+                <span class="metric-num">${race.registration_count}</span>
+                <span class="metric-unit">人</span>
+              </div>
+            </div>
+            <div class="tl-item">
+              <strong>提交作品</strong>
+              <div class="metric-display">
+                <span class="metric-num">${race.work_count}</span>
+                <span class="metric-unit">件</span>
+              </div>
+            </div>
+            ${race.repo_url ? `
+            <div class="tl-item" style="grid-column:1/-1;border-top:1px solid var(--line);padding-top:12px;margin-top:4px;">
+              <strong>📦 挑战仓库</strong>
+              <div style="margin-top:4px;">
+                <a href="${esc(race.repo_url)}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#24292f;color:#fff;border-radius:8px;text-decoration:none;font-size:13px;font-weight:700;">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="white"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+                  查看挑战仓库
+                </a>
+              </div>
+            </div>` : ""}
           </div>
-          ${race.rules ? `<div style="margin-top:20px;padding:16px;background:#fff;border-radius:8px;border:1px solid var(--line)"><strong>📋 参赛规则</strong><div style="margin-top:8px;font-size:14px;color:var(--muted)">${esc(race.rules)}</div></div>` : ""}
+          
+          ${race.rules ? `
+          <div style="margin-top:28px;padding:24px;background:rgba(255,255,255,0.7);backdrop-filter:blur(10px);border-radius:12px;border:1px solid var(--line)">
+            <strong style="font-family:'Outfit',sans-serif;font-size:16px;color:var(--ink);">📋 参赛规则与规范</strong>
+            <div style="margin-top:12px;font-size:14.5px;color:hsl(222,20%,25%);line-height:1.7;white-space:pre-wrap;">${esc(race.rules)}</div>
+          </div>` : ""}
         </div>
 
-        <!-- Works -->
-        <div class="section-title" style="margin-top:32px">📦 作品 (${(race.works||[]).length})</div>
-        ${(race.works||[]).length === 0
-          ? '<div class="empty-state"><p>暂无作品</p></div>'
-          : `<div class="work-list">${race.works.map(w => `
-            <div class="card work-item">
-              <div class="info">
-                <h3>${esc(w.title)}</h3>
-                <p>${esc(w.summary || "暂无摘要")}</p>
-              </div>
-              <span class="badge ${w.status==='submitted'?'badge-live':'badge-draft'}">${statusLabel(w.status)}</span>
-            </div>`).join("")}</div>`}
+        <div style="max-width: 900px; margin: 40px auto 0;">
+          <!-- Works -->
+          <div class="section-title" style="margin-top:32px; font-size:20px; font-weight:800; border-bottom:2px solid var(--line); padding-bottom:8px;">📦 参赛选手作品 (${(race.works||[]).length})</div>
+          ${(race.works||[]).length === 0
+            ? '<div class="empty-state"><div class="icon">📦</div><p>目前暂无作品提交</p></div>'
+            : `<div class="work-list" style="margin-top:16px;">${race.works.map(w => `
+              <div class="glass-card work-item" style="display:flex; justify-content:space-between; align-items:center; padding:18px 24px; margin-bottom:12px; cursor:pointer;" onclick="location.href='/work?id=${w.id}'">
+                <div class="info">
+                  <h3 style="font-size:16px;font-weight:700;color:var(--ink);margin-bottom:4px;">${esc(w.title)}</h3>
+                  <p style="font-size:13.5px;color:var(--muted);font-weight:500;">${esc(w.summary || "暂无作品摘要描述")}</p>
+                </div>
+                <span class="badge ${w.status==='submitted'?'badge-live':'badge-draft'}">${statusLabel(w.status)}</span>
+              </div>`).join("")}</div>`}
 
-        <!-- Awards (if completed) -->
-        ${race.status === "completed" && race.awards.length > 0 ? `
-        <div class="section-title" style="margin-top:32px">🏆 获奖名单</div>
-        <div class="leaderboard">
-          ${race.awards.map((a,i) => `
-          <div class="leaderboard-item">
-            <span class="rank ${i===0?'gold':i===1?'silver':i===2?'bronze':''}">#${a.rank||i+1}</span>
-            <div><strong>${esc(a.award_name)}</strong><span style="font-size:13px;color:var(--muted);margin-left:8px">${esc(a.rider_name||"")} · ${esc(a.work_title||"")}</span></div>
-          </div>`).join("")}
-        </div>` : ""}
+          <!-- Awards (if completed) -->
+          ${race.status === "completed" && race.awards.length > 0 ? `
+          <div class="section-title" style="margin-top:40px; font-size:20px; font-weight:800; border-bottom:2px solid var(--line); padding-bottom:8px;">🏆 赛事荣光榜</div>
+          <div class="leaderboard" style="margin-top:16px;">
+            ${race.awards.map((a,i) => `
+            <div class="leaderboard-item">
+              <span class="rank ${i===0?'gold':i===1?'silver':i===2?'bronze':''}">#${a.rank||i+1}</span>
+              <div>
+                <strong style="font-size:16px;color:var(--ink);">${esc(a.award_name)}</strong>
+                <span style="font-size:14px;color:var(--muted);margin-left:12px;font-weight:600;">👤 骑手: ${esc(a.rider_name||"")} · 📦 作品: 《${esc(a.work_title||"")}》</span>
+              </div>
+            </div>`).join("")}
+          </div>` : ""}
+        </div>
       `;
+    }
+
+    async function doRegister(raceId) {
+      const user = AUTH.user;
+      if (!user) { AUTH.login(); return; }
+      try {
+        const res = await fetch(`/api/registrations`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${AUTH.token}` },
+          body: JSON.stringify({ raceId, userId: user.id }),
+        });
+        if (res.ok) {
+          alert('✅ 报名成功！请前往 Console 查看您的参赛状态。');
+        } else {
+          const err = await res.json();
+          alert(`❌ 报名失败: ${err.error?.message || err.error || '请稍后重试'}`);
+        }
+      } catch (e) {
+        alert(`❌ 请求失败: ${e.message}`);
+      }
     }
 
     load();

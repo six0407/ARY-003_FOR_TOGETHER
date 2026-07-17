@@ -18,7 +18,7 @@
       <a href="/results.html">Results</a>
       <a href="/cooperation.html">Cooperation</a>
     </nav>
-    <div class="user-area">
+    <div class="user-area" id="auth-area">
       <a href="/console" class="btn btn-outline btn-sm">Console →</a>
     </div>
   </header>
@@ -35,15 +35,15 @@
 
   <footer class="ary-footer">Agent Racing Yard · MVP v0.2</footer>
 
+  <script src="/auth.js"></script>
   <script>
     async function load() {
       try {
-        const [worksRes, racesRes] = await Promise.all([
-          fetch("/api/works"),
-          fetch("/api/races"),
+        const [works, races] = await Promise.all([
+          safeFetch("/api/works"),
+          safeFetch("/api/races"),
         ]);
-        const works = await worksRes.json();
-        const races = await racesRes.json();
+        if (!works || !races) throw new Error("加载失败");
         renderFilters(races, works);
         renderWorks(works, null);
       } catch (e) {
@@ -87,16 +87,16 @@
       document.getElementById("workList").innerHTML = filtered.map(w => {
         const cleanDesc = stripMarkdown(w.description || "");
         return `
-        <div class="card" style="margin-bottom:12px;cursor:pointer;" onclick="location.href='/work?id=${w.id}'">
-          <div class="card-body">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start">
-              <div>
-                <h3 style="font-size:17px;margin-bottom:4px">${esc(w.title)}</h3>
-                <p style="font-size:14px;color:var(--muted)">${esc(w.summary || "暂无描述")}</p>
-                ${cleanDesc ? `<p style="font-size:13px;color:var(--muted);margin-top:8px;line-height:1.5">${esc(cleanDesc.slice(0,200))}${cleanDesc.length>200?'...':''}</p>` : ""}
-                <div style="margin-top:10px;font-size:13px;color:var(--muted)">👤 ${esc(w.author_name || "匿名")} · ${{submitted:'已提交',draft:'草稿',locked:'已锁定'}[w.status]||w.status}</div>
+        <div class="glass-card" style="margin-bottom:16px;cursor:pointer; transition:var(--transition);" onclick="location.href='/work?id=${w.id}'">
+          <div class="card-body" style="padding: 24px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start; gap:16px;">
+              <div style="flex:1;">
+                <h3 class="card-title" style="font-size:18px;margin-bottom:6px; color:var(--ink);">${esc(w.title)}</h3>
+                <p style="font-size:14px;color:var(--muted); font-weight:500; margin-bottom:8px;">${esc(w.summary || "暂无描述")}</p>
+                ${cleanDesc ? `<p style="font-size:13px;color:var(--muted);line-height:1.6;background:rgba(0,0,0,0.02);padding:10px 14px;border-radius:8px;margin-top:12px;">${esc(cleanDesc.slice(0,200))}${cleanDesc.length>200?'...':''}</p>` : ""}
+                <div style="margin-top:16px;font-size:13px;color:var(--muted); font-weight:600;">👤 ${esc(w.author_name || "匿名")} · ${{submitted:'已提交',draft:'草稿',locked:'已锁定'}[w.status]||w.status}</div>
               </div>
-              <span class="badge ${w.status==='submitted'?'badge-live':'badge-draft'}">${{submitted:'已提交',draft:'草稿',locked:'已锁定'}[w.status]||w.status}</span>
+              <span class="badge ${w.status==='submitted'?'badge-live':'badge-draft'}" style="margin-top:2px;">${{submitted:'已提交',draft:'草稿',locked:'已锁定'}[w.status]||w.status}</span>
             </div>
           </div>
         </div>
@@ -104,6 +104,7 @@
     }
 
     load();
+    initAuth();
   </script>
 </body>
 </html>

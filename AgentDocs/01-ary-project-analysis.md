@@ -1,51 +1,53 @@
-# ARY (Agent Racing Yard) 项目全局梳理与作业目标定义
+# ARY 项目全局梳理 — Agent 导读
 
-## 1. 核心背景：什么是 Agent Racing Yard？
+> 本文为 Agent 快速理解项目提供导读。详细定义以 `docs/` 下权威文档为准。
+> 本文不替代 `docs/`，只做索引和上下文摘要。
 
-软件工程正在经历向 **Agentic Development（智能体辅助开发）** 的范式转移。过去的 Hackathon（黑客松）仅仅评估选手最终写出的代码能否运行，而在 Agentic 时代，**“如何驾驭 AI (Agent Riding)”** 本身成了一项核心的工程技能。
+---
 
-ARY 的全称是 Agent Racing Yard。它不是一个供大家自己写代码交作业的普通平台，而是一个**“展示、记录、评审人类如何与 Coding Agent 协同工作”**的赛事竞技场。
-在这个平台中，类似 selfdogfoodfeed（自己吃自己的狗粮）的理念被充分践行：选手们使用 Agent 来开发系统，而平台则负责客观地追踪、记录并评估他们在这个过程中的成本、进度、风险、技术路线纠偏等各项指标。
+## 1. 核心背景
 
-## 2. 核心概念与业务领域
+ARY (Agent Racing Yard) 是一个**展示、记录、评审人类如何与 Coding Agent 协同工作**的赛事平台。选手使用 Agent 开发系统，平台追踪记录其成本、进度、风险等指标。
 
-为了确保团队全员对业务有一致理解，以下是本项目的全局关键领域概念（详见 `ary-domain-analysis.v0.3.md`）：
+见 `docs/ary-mvp.prd.md` — 产品定位与 MVP 范围。
 
-* **Race (赛事)**：活动的载体，包含报名、进行中、评审、结束等完整生命周期。
-* **User & Role (用户与角色)**：平台有 Public (公众)、Rider (骑手/选手)、Organizer (主办方)、Judge (评委)、Admin (管理员) 等职责。
-* **Registration & RaceProject**: 选手报名后 (Registration)，系统为其分配的本场比赛工作区 (RaceProject)。
-* **CAConnection (CA接入实例)**: 选手在比赛中使用的每一个 Coding Agent（如通过 DCR Desktop App 接入的客户端）都是一个连接实例。
-* **Session & Evidence (交互与证据)**: 选手与 CA 交互产生的实时日志与动作数据。这是用来证明选手“骑行能力”的最核心证据。
-* **Projection (投影)**: 为了支持实时观赛大厅 (Live Hall) 和大屏 (Screen Console)，系统会将原始日志转换为易于读取的实时进度与风险模型。
-* **Work & Award (作品与奖项)**: 选手最终交付的代码与成果，以及评委给出的评价与赛果。
+## 2. 领域概念速览
 
-## 3. 待实现的全局项目范围 (MVP Scope)
+完整定义见 `docs/ary-domain-analysis.v0.3.md`，以下是关键对象：
 
-根据 `ary-mvp.prd.md` 和 `ary.plan.md`，我们团队需要实现的全局核心模块包括：
+| 概念 | 一句话 |
+| --- | --- |
+| **Race** | 赛事，有报名→进行→评审→结束生命周期 |
+| **User / Roles** | 用户持有 rider/judge/organizer/admin 角色集合 |
+| **Registration** | 选手报名后生成的记录 |
+| **RaceProject** | Registration approved 后自动生成的工作区，CAConnection 的容器 |
+| **CAConnection** | 选手接入的每个 Coding Agent 实例（通过 DCR Desktop App） |
+| **Session / Evidence** | CA 交互日志与动作数据，骑行能力的核心证据 |
+| **Projection** | 原始日志转化为实时进度/风险模型，用于 Live Hall 和 Screen |
+| **Work / Award** | 最终交付代码与评委评价结果 |
 
-1. **Public Site (公开展示端)**：
-   - 包含 Gallery-first 首页、赛事详情、Live Hall（实况大厅）、作品列表与最终榜单。
-2. **Race Console (赛事控制台)**：
-   - 面向三类角色的工作台：主办方（发布赛事、管理报名）、选手（配置 CA、看进度、交作品）、评委（看代码、看 CA 日志摘要、打分）。
-3. **Screen Console (大屏控制台)**：
-   - 面向现场或直播的大屏展示页面（Jumbotron/Billboard 视图）。
-4. **Riding Intelligence (底层引擎与 CA 接入)**：
-   - 负责与老师提供的 **DCR Desktop App** 对接，完成安全验签、收集 CA 上报数据。
-   - 实现实时数据的 Projection 计算（如成本消耗、任务进度聚合）。
+## 3. MVP 模块
 
-## 4. 我们的课程作业与赛事目标
+详细定义见 `docs/ary-mvp.prd.md`：
 
-根据老师下发的赛事要求：**“赛期内尽力各选手（小组）推进ARY项目的开发，进度、质量并重，截至到完赛，决出3甲。评审标准将综合考虑完成进度、项目质量和骑行能力。”**
+| 模块 | 说明 |
+| --- | --- |
+| **Public Site** | 首页/Race/Live Hall/Works/Results/Rider/Review/Cooperation |
+| **Race Console** | Organizer/Rider/Judge 三视图工作台 |
+| **Screen Console** | 大屏展示（Jumbotron/Billboard/Live/榜单/Works） |
+| **Riding Intelligence** | DCR Desktop App 对接 + 验签 + Projection 引擎 |
 
-这对我们小组意味着：
-1. **进度与质量**：我们需要将目前的 PRD 和高保真原型（`design-prototype/`），真正落地为前后端可运行、结构清晰、权限严密的系统实现。不能只是个花架子。
-2. **覆盖全链路核心流程**：从 GitHub 登录、创建赛事、选手报名配密钥、DCR 上报防伪数据，一直到评委打分出榜单，必须跑通一个完整的“第一场标杆赛”闭环。
-3. **骑行能力展现**：在开发这个项目的同时，我们自己也要大量且熟练地运用 Agent（我们现在利用 AI 协同分析与架构就是其中一环！）。我们的开发过程本身就是展现“Agent Riding”能力的最佳证据。
+## 4. 课程目标
 
-## 5. 团队成功的定义 (Definition of Done)
+见 `docs/ary.plan.md` — 完整任务定义。
 
-在完赛前，我们必须达成以下形态：
-* **前端还原度**：前端代码能够高度还原高保真原型的视觉冲击力，支持各种状态兜底。
-* **后端健壮性**：建立起稳定的数据模型和鉴权体系（基于 `User.roles`），后端不只是简单的 CRUD，还需承担 CA 数据的安全校验与 Projection 聚合运算。
-* **安全闭环**：完美对接老师的 DCR App，具备抵御重放攻击和数据篡改的防伪能力。
-* **资产沉淀**：赛事结束后的页面能良好地沉淀出 Rider Profile（骑手能力档案）和赛事复盘。
+评审标准：**完成进度 + 项目质量 + 骑行能力**。开发过程本身也是"Agent Riding"能力的证明。
+
+## 5. Definition of Done
+
+| 维度 | 要求 |
+| --- | --- |
+| 前端还原度 | 对齐高保真原型视觉，支持状态兜底 |
+| 后端健壮性 | 稳定数据模型 + 鉴权体系 + CA 校验 + Projection |
+| 安全闭环 | DCR App 对接 + 防重放/防篡改 |
+| 资产沉淀 | Rider Profile + 赛事复盘 |

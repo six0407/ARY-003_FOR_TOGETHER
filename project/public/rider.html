@@ -5,7 +5,7 @@
 <header class="ary-header">
   <a class="brand" href="/home.html"><img src="/assets/logo-horse-compass-transparent.png" alt=""/><span>Agent Racing Yard</span></a>
   <nav><a href="/home.html">Races</a><a href="/works.html">Works</a><a href="/results.html">Results</a><a href="/cooperation.html">Cooperation</a></nav>
-  <div class="user-area"><a href="/console" class="btn btn-outline btn-sm">Console →</a></div>
+  <div class="user-area" id="auth-area"><a href="/console" class="btn btn-outline btn-sm">Console →</a></div>
 </header>
 <div class="page-container">
   <div id="rider-header" style="display:flex;gap:24px;align-items:center;margin-bottom:24px;"></div>
@@ -14,17 +14,15 @@
   <div id="rider-works"></div>
 </div>
 <footer class="ary-footer">Agent Racing Yard · MVP v0.2</footer>
+<script src="/auth.js"></script>
 <script>
   const slug = new URLSearchParams(location.search).get('slug') || '';
   async function load(){
     try {
-      const [usersRes, racesRes, regsRes, worksRes, awardsRes] = await Promise.all([
-        fetch('/api/auth/users'), fetch('/api/races'), fetch('/api/registrations'),
-        fetch('/api/works'), fetch('/api/awards'),
+      const [users, races, regs, works, awards] = await Promise.all([
+        safeFetch('/api/auth/users'), safeFetch('/api/races'), safeFetch('/api/registrations'),
+        safeFetch('/api/works'), safeFetch('/api/awards'),
       ]);
-      const users = await usersRes.json(); const races = await racesRes.json();
-      const regs = await regsRes.json(); const works = await worksRes.json();
-      const awards = await awardsRes.json();
 
       const user = slug ? users.find(u=>u.slug===slug) : users.find(u=>u.roles.includes('rider'));
       if(!user){ document.querySelector('.page-container').innerHTML='<div class="empty-state">骑手未找到</div>'; return; }
@@ -48,6 +46,7 @@
     } catch(e){ document.querySelector('.page-container').innerHTML=`<div class="empty-state">加载失败: ${e.message}</div>`; }
   }
   load();
+  initAuth();
 </script>
 </body>
 </html>

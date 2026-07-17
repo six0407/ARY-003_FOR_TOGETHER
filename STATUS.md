@@ -12,19 +12,34 @@
 
 ## 当前结论
 
-* 项目 MVP 全部任务已完成，形成"快速原型"级别的完整前后端系统。
-* 技术栈：Express 5 + SQLite（sql.js）+ 原生 HTML/CSS/JS（零前端框架依赖）。
-* 登录为 Demo 模式（免密选用户），未接入真实 GitHub OAuth。
-* 实时通讯采用 HTTP 轮询（10 秒），未实现 WebSocket。
+### GitHub OAuth 登录
+
+* **后端路由**：`GET /api/auth/github` 跳转授权 + `GET /api/auth/github/callback` 回调处理（code → access_token → GitHub user → ARY 用户创建/更新）。
+* **自动角色分配**：首用户自动 admin（排除 `gh-` 前缀演示用户）；`GITHUB_ORG` 环境变量指定组织成员自动 rider 角色。
+* **Demo 兼容**：Demo 模式（免密选用户）与 GitHub OAuth 双模式并行，用户可自由选择。
+* **共享认证模块**：`auth.js` 提供 `safeFetch()`（自动解包 `{ success, data }`）+ `AUTH` 对象（token 管理/localStorage 跨标签同步/登录登出/`fetchMe()`）。
+* **页面适配**：10 个页面已引用 `auth.js`（home/works/race/results/rider/work/review/cooperation/live-hall/console）；`admin.html` 使用内联等效实现。
+* **密钥管理**：`.env` 已加入 `.gitignore`，不跟踪 Git 历史。
+* **OAuth 未配置提示**：无 `.env` 配置时显示友好错误信息。
+
+### 前端修补与增强
+
+* **响应格式统一**：后端 ~60 端点全部改用 `response.js` helpers（`ok/list/created/badRequest/unauthorized/forbidden/notFound`）；前端全部通过 `safeFetch`/`safeJson` 解包消费。
+* **Live Hall 赛道动画**：从 `design-prototype/` 提取 Canvas 动画代码（速度线/赛道路线/骑手标记/Time Gate/Signal 信号），集成到 `live-hall.html`。
+* **语法修复**：修复 `live-hall.html` 中游离反引号导致的 JS 解析失败（stray backtick 阻塞整个 `<script>` 执行）。
+* **跨标签登录同步**：`localStorage` + `sessionStorage` 双存储策略实现多标签页登录态同步。
+* **种子数据重建**：`seedDemo()` 从 `INSERT OR IGNORE` 改为 `DELETE FROM` + `INSERT` 方案，每次重启获取干净数据。
+* **赛事仓库关联**：`races` 表新增 `repo_url` 字段，创建赛事支持从 GitHub 仓库导入。
+* **Console/Admin 修复**：`refreshData()`/`openWorkspace()` 改用 `safeJson` 解包；Admin Console 修复登录检测流程。
+
+### 其他结论
+
+* 所有 API 已统一为 `{ success: true/false, data/error }` 格式。
+* CI/CD 已就绪（`.github/workflows/test.yml` — push/PR 自动跑 62 条测试）。
+* 文档已清理（删除 2 个重复文件 `ux-1-closure.md`、`ux-1-m2-input-final.md`，精简 Agent 导读）。
+* 种子数据：5 个用户（organizer + 3 rider + judge）、3 场赛事、多选手注册/作品/投影/award。
+* 实时通讯仍采用 HTTP 轮询（10 秒），未实现 WebSocket。
 * `AgentDocs/03-open-questions.md` 中的技术选型与架构升级决策尚未落地。
-* 004 作业预期在 003 代码基础上进行优化升级（详见 `PLAN.md` 下一步）。
-* 项目已完成 MVP 文档基线收口，并已完成 DEV-1 的基础架构落地与验收。
-* 业务文档已集中到 `docs/` 下。
-* 当前正式项目任务定义入口是 `docs/ary.plan.md`。
-* `PRD-TEMP-1` 已完成复审，报名、RaceProject 自动生成、CAConnection 动态接入和评审前风险提示的新口径已同步到主要文档和高保真原型，术语已完成统一。
-* 新增“防伪、防篡改”需求已同步到 PRD、领域、IA、权限、QA、OPS 和 CA 契约：比赛中的实时 CA 消息必须通过已登记的 DCR Desktop App 上报，并经过设备身份、消息签名和防重放校验。
-* `UX-1` 已完成收口：高保真原型、页面级标注产物、状态样张和跨视口截图证据已形成，并已转化为 `M2` 架构设计输入清单。
-* 应用代码已在 `project/` 目录落地，包含后端架构实现与前端原型，并已通过 `npm test` 46 条核心验收用例，具备基本的测试和部署配置。
 
 ## 任务看板
 
@@ -42,6 +57,16 @@
 | `DEV-7` Report / Review / Results | ✅ 完成 | 报告生成器：race_report / rider_report / review_summary 三种类型。 | `project/src/app.js` L753-L850 |
 | `REL-1` 赛事彩排 / 灰度发布 / 正式发布 | ✅ 完成 | deploy.sh（staging/production）+ health-check.sh + /api/health。 | `project/deploy.sh`、`project/health-check.sh` |
 | `OPS-1` 赛事值守 / 回滚 / 赛后归档 | ✅ 完成 | backup.sh（4 种模式）+ OPS_CHECKLIST.md（含冻结窗口/彩排/值守/回滚/归档）。 | `project/backup.sh`、`project/OPS_CHECKLIST.md` |
+| `004-OAUTH` GitHub OAuth 登录 | ✅ 完成 | 后端跳转+回调路由 + 自动建号 + Demo 兼容 + 友好提示。 | `project/src/app.js` L92-L188 |
+| `004-FORMAT` API 响应格式统一 | ✅ 完成 | 全部路由改用 response.js helpers（ok/list/created/badRequest/unauthorized/forbidden/notFound）。 | `project/src/app.js` |
+| `004-AUTHJS` 公开页 OAuth 适配 | ✅ 完成 | 共享 auth.js（safeFetch + 登录态 + localStorage 跨标签页）+ 10 个页面全部适配。 | `project/public/auth.js` |
+| `004-CICD` CI/CD 自动测试 | ✅ 完成 | GitHub Actions — push/PR 自动跑 62 条测试。 | `.github/workflows/test.yml` |
+| `004-SEED` 种子数据增强 | ✅ 完成 | 5 用户（3 rider）+ 多选手注册 + 多作品 + 投影 + award。 | `project/src/db.js` |
+| `004-DOCS` 文档清理 | ✅ 完成 | 删除 2 个重复文件，精简 Agent 导读。 | `docs/`、`AgentDocs/` |
+| `004-CONSOLE` Console/Admin OAuth 适配 | ✅ 完成 | console.html/admin.html 改用 safeJson + 跨标签登录同步。 | `project/public/console.html`、`project/public/admin.html` |
+| `004-LIVEHALL-CANVAS` Live Hall 赛道动画 | ✅ 完成 | Canvas 赛道渲染（速度线/赛道曲线/骑手标记/Time Gate/Signal）+ 修复 stray backtick 语法错误。 | `project/public/live-hall.html` |
+| `004-FRONT-ALIGN` 前端响应格式对齐 | ✅ 完成 | 全部公开页使用 safeFetch/safeJson 消费统一响应格式。 | `project/public/*.html` |
+| `004-REPO-URL` 赛事仓库关联 | ✅ 完成 | races 表 repo_url 字段 + 创建赛事从 GitHub 导入。 | `project/src/app.js`、`project/public/console.html` |
 
 ## 证据索引
 
@@ -75,7 +100,8 @@
 
 | 项目 | 状态 |
 | --- | --- |
-| Demo 登录模式，未接入真实 GitHub OAuth | 004 待升级 |
+| GitHub OAuth 需 `.env` 配置 `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` | ✅ 已创建 OAuth App，密钥已配置 |
+| GitHub OAuth 密钥误提交到 Git 历史 | ⚠️ 已移除并加入 gitignore，建议 Regenerate secret |
 | SQLite 单文件数据库，不适合生产并发 | 004 待评估是否升级到 PostgreSQL |
 | 前端原生 HTML/JS，未使用 React/Vue 框架 | 004 待决策前端工程化方案 |
 | HTTP 轮询而非 WebSocket，Live Hall 实时性受限 | 004 待升级 |

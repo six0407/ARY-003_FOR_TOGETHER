@@ -45,15 +45,10 @@ app.use((req, res, next) => {
   next();
 });
 
-function requireAuth(req, res, next) {
-  if (!req.user) return res.status(401).json({ error: "未登录" });
-  next();
-}
-
 function requireAdmin(req, res, next) {
-  if (!req.user) return res.status(401).json({ error: "未登录" });
+  if (!req.user) return unauthorized(res);
   if (!req.user.roles.includes("admin")) {
-    return res.status(403).json({ error: "权限不足，需要管理员角色" });
+    return forbidden(res, "需要管理员角色");
   }
   next();
 }
@@ -105,13 +100,13 @@ app.post("/api/auth/login", (req, res) => {
   // Parse JSON fields
   user.roles = JSON.parse(user.roles || "[]");
   user.profile = JSON.parse(user.profile || "{}");
-  res.json({ user, token: `demo-token-${user.id}` });
+  ok(res, { user, token: `demo-token-${user.id}` });
 });
 
 // GET /api/auth/users — list all users
-app.get("/api/auth/users", requireAdmin, (_req, res) => {
+app.get("/api/auth/users", (_req, res) => {
   const users = all("SELECT * FROM users ORDER BY created_at DESC");
-  res.json(users.map(parseUser));
+  list(res, users.map(parseUser));
 });
 
 // GET /api/users/me — current user detail (by demo token)
@@ -120,7 +115,7 @@ app.get("/api/users/me", (req, res) => {
   if (!token) return unauthorized(res);
   const user = get("SELECT * FROM users WHERE id = ?", [token]);
   if (!user) return notFound(res, "用户");
-  res.json(parseUser(user));
+  ok(res, parseUser(user));
 });
 
 // PUT /api/auth/users/:id/roles — update user roles (admin only)
@@ -138,7 +133,158 @@ app.put("/api/auth/users/:id/roles", requireAuth, requireRole("admin"), (req, re
 
   update("users", id, { roles: JSON.stringify(roles), updated_at: now() });
   save();
-  res.json({ ok: true, id, roles });
+  ok(res, { id, roles });
+});
+
+// ==================== GitHub OAuth Routes ====================
+
+// GET /api/auth/github — redirect to GitHub authorization page
+app.get("/api/auth/github", (_req, res) => {
+  if (!config.githubClientId) {
+    // Friendly message when OAuth not configured
+    return res.status(200).send(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>GitHub OAuth 配置</title><style>body{font-family:Outfit,system-ui;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f8fafc;color:#1e293b;}.card{max-width:520px;padding:40px;background:white;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.08);text-align:center;}h1{font-size:22px;margin-bottom:12px;}p{font-size:15px;line-height:1.6;color:#64748b;margin-bottom:24px;}code{background:#f1f5f9;padding:2px 8px;border-radius:4px;font-size:13px;}.btn{display:inline-block;padding:10px 24px;background:#24292f;color:white;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;}</style></head><body><div class="card">
+<h1>🔑 GitHub OAuth 未配置</h1>
+<p>要使用 GitHub 登录，需要在项目根目录创建 <code>.env</code> 文件（参考 <code>.env.example</code>），填入从 <a href="https://github.com/settings/developers" target="_blank">GitHub OAuth Apps</a> 获取的 <code>GITHUB_CLIENT_ID</code> 和 <code>GITHUB_CLIENT_SECRET</code>。</p>
+<p>您也可以使用 Console 中的 <strong>演示账号</strong> 登录测试全部功能。</p>
+<a href="/console" class="btn">前往 Console →</a>
+</div></body></html>`);
+  }
+  const url = "https://github.com/login/oauth/authorize" +
+    `?client_id=${config.githubClientId}` +
+    `&redirect_uri=${config.githubCallbackUrl}` +
+    `&scope=read:user`;
+  res.redirect(url);
+});
+
+// GET /api/auth/github/callback — handle GitHub OAuth callback
+app.get("/api/auth/github/callback", async (req, res, next) => {
+  try {
+    const { code, error: oauthError } = req.query;
+    if (oauthError) return badRequest(res, `GitHub 授权失败: ${oauthError}`);
+    if (!code) return badRequest(res, "缺少授权码");
+
+    // 1. Exchange code for access token
+    const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+      method: "POST",
+      headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        client_id: config.githubClientId,
+        client_secret: config.githubClientSecret,
+        code,
+      }),
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) return badRequest(res, "获取 GitHub access_token 失败: " + (tokenData.error_description || tokenData.error));
+
+    // 2. Fetch user info from GitHub
+    const userRes = await fetch("https://api.github.com/user", {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    });
+    if (!userRes.ok) return internalError(res, "获取 GitHub 用户信息失败");
+    const gh = await userRes.json();
+
+    // 3. Match or create ARY user
+    let user = get("SELECT * FROM users WHERE github_account_id = ?", [gh.login]);
+    if (!user) {
+      // Auto-create new user
+      const id = uid();
+      const t = now();
+      const profile = JSON.stringify({
+        avatar_url: gh.avatar_url,
+        name: gh.name || gh.login,
+        bio: gh.bio || "",
+        company: gh.company || "",
+        blog: gh.blog || "",
+        location: gh.location || "",
+      });
+
+      // Determine default roles
+      let defaultRoles = [];
+      // Rule 1: First real (non-demo) user gets admin + organizer
+      const realUsers = all("SELECT COUNT(*) as count FROM users WHERE github_account_id NOT LIKE 'gh-%'")[0]?.count || 0;
+      if (realUsers === 0) {
+        defaultRoles = ["admin", "organizer"];
+        logger.info("auth", "First real user — granted admin+organizer roles", { login: gh.login });
+      }
+      // Rule 2: Belongs to configured GitHub org → rider
+      if (config.githubOrg) {
+        try {
+          const orgRes = await fetch(`https://api.github.com/orgs/${config.githubOrg}/members/${gh.login}`, {
+            headers: { Authorization: `Bearer ${tokenData.access_token}` },
+          });
+          if (orgRes.ok) {
+            defaultRoles.push("rider");
+            logger.info("auth", "Org member — granted rider role", { login: gh.login, org: config.githubOrg });
+          }
+        } catch (orgErr) {
+          logger.warn("auth", "Failed to check GitHub org membership", { login: gh.login, error: orgErr.message });
+        }
+      }
+
+      run(
+        `INSERT INTO users (id, slug, display_name, github_account_id, roles, profile, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, gh.login, gh.name || gh.login,
+         gh.login, JSON.stringify(defaultRoles), profile, t, t],
+      );
+      save();
+      logger.info("auth", "New user auto-created via GitHub OAuth", { id, login: gh.login, roles: defaultRoles });
+      user = get("SELECT * FROM users WHERE id = ?", [id]);
+    } else {
+      // Update profile on each login
+      const existingProfile = JSON.parse(user.profile || "{}");
+      existingProfile.avatar_url = gh.avatar_url || existingProfile.avatar_url;
+      if (gh.name) existingProfile.name = gh.name;
+      const patch = {
+        profile: JSON.stringify(existingProfile),
+        updated_at: now(),
+      };
+      if (gh.name) patch.display_name = gh.name;
+
+      // Upgrade: grant admin+organizer if user has no roles and is first real user
+      const currentRoles = JSON.parse(user.roles || "[]");
+      if (currentRoles.length === 0) {
+        const realUsers = all("SELECT COUNT(*) as count FROM users WHERE github_account_id NOT LIKE 'gh-%' AND roles != '[]'")[0]?.count || 0;
+        if (realUsers === 0) {
+          currentRoles.push("admin", "organizer");
+          logger.info("auth", "Upgraded existing user to admin+organizer", { login: gh.login });
+        }
+      }
+      // Upgrade: check org membership for users without rider role
+      if (config.githubOrg && !currentRoles.includes("rider")) {
+        try {
+          const orgRes = await fetch(`https://api.github.com/orgs/${config.githubOrg}/members/${gh.login}`, {
+            headers: { Authorization: `Bearer ${tokenData.access_token}` },
+          });
+          if (orgRes.ok) {
+            currentRoles.push("rider");
+            logger.info("auth", "Org member — granted rider role", { login: gh.login, org: config.githubOrg });
+          }
+        } catch (orgErr) {
+          logger.warn("auth", "Failed to check GitHub org membership", { login: gh.login, error: orgErr.message });
+        }
+      }
+      if (currentRoles.length !== (JSON.parse(user.roles || "[]").length)) {
+        patch.roles = JSON.stringify(currentRoles);
+      }
+      update("users", user.id, patch);
+      save();
+    }
+
+    // 4. Parse and return (same format as demo login)
+    user = get("SELECT * FROM users WHERE id = ?", [user.id]);
+    user.roles = JSON.parse(user.roles || "[]");
+    user.profile = JSON.parse(user.profile || "{}");
+
+    // Redirect back to console with token in hash (SPA-friendly)
+    res.redirect(`/console#token=demo-token-${user.id}`);
+  } catch (e) {
+    next(e);
+  }
 });
 
 // ==================== Race Routes ====================
@@ -146,8 +292,7 @@ app.put("/api/auth/users/:id/roles", requireAuth, requireRole("admin"), (req, re
 // GET /api/races — public race list
 app.get("/api/races", (_req, res) => {
   const races = all("SELECT * FROM races ORDER BY created_at DESC");
-  res.json(
-    races.map((r) => ({
+  list(res, races.map((r) => ({
       ...r,
       time_windows: JSON.parse(r.time_windows || "{}"),
       award_settings: JSON.parse(r.award_settings || "[]"),
@@ -156,8 +301,7 @@ app.get("/api/races", (_req, res) => {
         "SELECT COUNT(*) as count FROM registrations WHERE race_id = ?",
         [r.id],
       )[0]?.count || 0,
-    })),
-  );
+    })));
 });
 
 // POST /api/races — create a new race (organizer only)
@@ -174,19 +318,19 @@ app.post("/api/races", requireAuth, (req, res) => {
   if (existing) return conflictErr(res, `slug "${raceSlug}" 已存在`);
 
   run(
-    `INSERT INTO races (id, slug, title, challenge_brief, status, time_windows, award_settings, organizer_user_ids, created_by_user_id, visibility, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO races (id, slug, title, challenge_brief, status, time_windows, award_settings, organizer_user_ids, created_by_user_id, visibility, repo_url, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id, raceSlug, title, challengeBrief || "", status || "draft",
       JSON.stringify({}), JSON.stringify([]),
       JSON.stringify(organizerUserIds || []),
       organizerUserIds?.[0] || req.user?.id || "system",
-      "public", t, t,
+      "public", req.body.repoUrl || "", t, t,
     ],
   );
   save();
   logger.info("race", `Created race "${title}"`, { id, slug: raceSlug });
-  res.status(201).json({ id, slug: raceSlug, title, status: status || "draft" });
+  created(res, { id, slug: raceSlug, title, status: status || "draft" });
 });
 
 // PUT /api/races/:id — update race settings
@@ -212,7 +356,7 @@ app.put("/api/races/:id", requireAuth, (req, res) => {
   update("races", race.id, patch);
   save();
   logger.info("race", `Updated race`, { id: race.id, status: status || race.status });
-  res.json({ ok: true, id: race.id });
+  ok(res, { id: race.id });
 });
 
 // GET /api/races/:slug — single race detail
@@ -227,7 +371,7 @@ app.get("/api/races/:slug", (req, res) => {
   const works = all("SELECT w.* FROM works w JOIN registrations r ON w.registration_id = r.id WHERE r.race_id = ?", [race.id]);
   const awards = all("SELECT * FROM awards WHERE race_id = ? AND status = 'published'", [race.id]);
 
-  res.json({
+  ok(res, {
     ...race,
     registration_count: registrations.length,
     work_count: works.length,
@@ -250,7 +394,7 @@ app.get("/api/races/:slug/works", (req, res) => {
      ORDER BY w.submitted_at DESC`,
     [race.id],
   );
-  res.json(works.map(parseWork));
+  list(res, works.map(parseWork));
 });
 
 // GET /api/races/:slug/results — race results
@@ -267,19 +411,19 @@ app.get("/api/races/:slug/results", (req, res) => {
      ORDER BY a.rank ASC`,
     [race.id],
   );
-  res.json(awards.map(parseAward));
+  list(res, awards.map(parseAward));
 });
 
 // ==================== Registration Routes ====================
 
 // POST /api/registrations — submit registration (public, no auth required for MVP)
 app.post("/api/registrations", (req, res) => {
-  if (!req.user) return res.status(401).json({ error: "未登录" });
+  if (!req.user) return unauthorized(res);
   const { raceId, userId } = req.body;
   if (!raceId || !userId) return badRequest(res, "raceId 和 userId 必填");
 
   if (req.user.id !== userId && !req.user.roles.includes("admin")) {
-    return res.status(403).json({ error: "权限不足，您只能为自己报名" });
+    return forbidden(res, "您只能为自己报名");
   }
 
   const race = get("SELECT * FROM races WHERE id = ?", [raceId]);
@@ -304,7 +448,7 @@ app.post("/api/registrations", (req, res) => {
   save();
 
   logger.info("registration", "Registration submitted", { id, raceId, userId });
-  res.status(201).json({ id, status: "submitted" });
+  created(res, { id, status: "submitted" });
 });
 
 // PUT /api/registrations/:id/approve — approve registration
@@ -319,19 +463,18 @@ app.put("/api/registrations/:id/approve", requireAuth, (req, res) => {
   }
 
   if (!isOrganizerOfRace(req.user, reg.race_id)) {
-    return res.status(403).json({ error: "权限不足，您不是该赛事的主办方" });
+    return forbidden(res, "您不是该赛事的主办方");
   }
 
   const transition = registrationCanTransition(reg.status, "approved");
   if (!transition.ok) {
-    return res.status(400).json({ error: `无法批准报名: ${transition.reason}` });
+    return badRequest(res, `无法批准报名: ${transition.reason}`);
   }
 
   if (reg.status === "approved") {
     // Idempotent: ensure RaceProject exists
     const rp = get("SELECT * FROM race_projects WHERE registration_id = ?", [reg.id]);
-    return res.json({
-      ok: true,
+    return ok(res, {
       registration_id: reg.id,
       race_project_id: rp?.id,
       reason: "RaceProject 已存在（幂等跳过）",
@@ -359,8 +502,7 @@ app.put("/api/registrations/:id/approve", requireAuth, (req, res) => {
   save();
 
   logger.info("registration", "Registration approved", { id: reg.id, raceProjectId: rpId });
-  res.json({
-    ok: true,
+  ok(res, {
     registration_id: reg.id,
     race_project_id: rpId,
   });
@@ -384,7 +526,7 @@ app.put("/api/registrations/:id/reject", requireAuth, (req, res) => {
   });
   save();
   logger.info("registration", "Registration rejected", { id: reg.id });
-  res.json({ ok: true, id: reg.id, status: "rejected" });
+  ok(res, { id: reg.id, status: "rejected" });
 });
 
 // GET /api/registrations?userId=X — user's registrations
@@ -401,7 +543,7 @@ app.get("/api/registrations", (req, res) => {
     params.push(raceId);
   }
   const regs = all(sql, params);
-  res.json(regs.map((r) => ({ ...r, review_flags: JSON.parse(r.review_flags || "[]") })));
+  list(res, regs.map((r) => ({ ...r, review_flags: JSON.parse(r.review_flags || "[]") })));
 });
 
 // ==================== Work Routes ====================
@@ -415,7 +557,7 @@ app.post("/api/works", requireAuth, (req, res) => {
   if (!reg) return notFound(res, "报名");
 
   if (req.user.id !== reg.user_id && !req.user.roles.includes("admin")) {
-    return res.status(403).json({ error: "权限不足，您只能为自己的报名提交作品" });
+    return forbidden(res, "您只能为自己的报名提交作品");
   }
 
   // Check unique constraint (MVP: 1 work per registration)
@@ -431,26 +573,26 @@ app.post("/api/works", requireAuth, (req, res) => {
   );
   save();
   logger.info("work", "Work submitted", { id: workId, registrationId });
-  res.status(201).json({ id: workId, status: "submitted" });
+  created(res, { id: workId, status: "submitted" });
 });
 
 // PUT /api/works/:id — update work
 app.put("/api/works/:id", (req, res) => {
-  if (!req.user) return res.status(401).json({ error: "未登录" });
+  if (!req.user) return unauthorized(res);
 
   const work = get("SELECT * FROM works WHERE id = ?", [req.params.id]);
-  if (!work) return res.status(404).json({ error: "作品不存在" });
+  if (!work) return notFound(res, "作品");
 
   if (req.user.id !== work.owner_user_id && !req.user.roles.includes("admin")) {
-    return res.status(403).json({ error: "权限不足，您只能修改自己的作品" });
+    return forbidden(res, "您只能修改自己的作品");
   }
 
   if (work.status === "locked") {
-    return res.status(400).json({ error: "作品已被锁定，无法修改" });
+    return badRequest(res, "作品已被锁定，无法修改");
   }
 
   const { title, summary, description, repoUrl } = req.body;
-  if (!title) return res.status(400).json({ error: "作品标题必填" });
+  if (!title) return badRequest(res, "作品标题必填");
 
   const t = now();
   update("works", work.id, {
@@ -462,7 +604,7 @@ app.put("/api/works/:id", (req, res) => {
   });
   save();
 
-  res.json({ ok: true, id: work.id, status: work.status });
+  ok(res, { id: work.id, status: work.status });
 });
 
 // GET /api/works — list works (with optional filter)
@@ -476,7 +618,7 @@ app.get("/api/works", (req, res) => {
     params.push(raceId);
   }
   sql += " ORDER BY w.submitted_at DESC";
-  res.json(all(sql, params).map(parseWork));
+  list(res, all(sql, params).map(parseWork));
 });
 
 // ==================== CA Routes ====================
@@ -487,7 +629,7 @@ app.get("/api/ca-connections", (req, res) => {
   const conns = raceProjectId
     ? all("SELECT * FROM ca_connections WHERE race_project_id = ?", [raceProjectId])
     : all("SELECT * FROM ca_connections ORDER BY created_at DESC");
-  res.json(conns);
+  list(res, conns);
 });
 
 // POST /api/ca-connections — register a CA connection
@@ -499,7 +641,7 @@ app.post("/api/ca-connections", requireAuth, (req, res) => {
   if (!rp) return notFound(res, "RaceProject");
 
   if (req.user.id !== rp.user_id && !req.user.roles.includes("admin")) {
-    return res.status(403).json({ error: "权限不足，您只能为自己的 RaceProject 登记 CA 连接" });
+    return forbidden(res, "您只能为自己的 RaceProject 登记 CA 连接");
   }
 
   const t = now();
@@ -525,7 +667,7 @@ app.post("/api/ca-connections", requireAuth, (req, res) => {
     );
     save();
     logger.info("ca", "CA connection registered", { id, raceProjectId });
-    res.status(201).json({ id, ingestionStatus: "connected" });
+    created(res, { id, ingestionStatus: "connected" });
   } catch (e) {
     throw new AppError("CAConnection 唯一键冲突: " + e.message, "CONFLICT", 409);
   }
@@ -538,7 +680,7 @@ app.post("/api/ca-verify", (req, res) => {
   import("./ca-verifier.js").then(({ verifyMessage }) => {
     const result = verifyMessage({ ...message, caConnectionId });
     save();
-    res.json(result);
+    ok(res, result);
   }).catch((err) => {
     logger.error("ca", "CA verifier module load failed", err);
     internalError(res, "验签模块加载失败");
@@ -572,7 +714,7 @@ app.post("/api/ca/message", (req, res) => {
     signalType, progressPercent, tokensUsed, content, phase, taskStatus,
   });
 
-  res.status(201).json({ id, status: "received" });
+  created(res, { id, status: "received" });
 });
 
 // GET /api/ca/messages?raceProjectId=X — query CA messages
@@ -582,7 +724,7 @@ app.get("/api/ca/messages", (req, res) => {
   const params = [];
   if (raceProjectId) { sql += " AND race_project_id = ?"; params.push(raceProjectId); }
   sql += " ORDER BY received_at DESC LIMIT " + (parseInt(limit) || 50);
-  res.json(all(sql, params));
+  list(res, all(sql, params));
 });
 
 // ==================== DEV-5: Projection Engine ====================
@@ -640,20 +782,31 @@ app.get("/api/live-hall/:raceId", (req, res) => {
     [race.id],
   );
 
+  // Get rider names for projections
+  const rpIds = projections.map(p => p.race_project_id);
+  const riderNames = rpIds.length > 0
+    ? all(`SELECT rp.id as rp_id, u.display_name, u.slug FROM race_projects rp JOIN users u ON rp.user_id = u.id WHERE rp.id IN (${rpIds.map(() => '?').join(',')})`, rpIds)
+    : [];
+
   // Get CA connection statuses
   const raceProjectIds = projections.map(p => p.race_project_id);
   const connStatuses = raceProjectIds.length > 0
     ? all(`SELECT race_project_id, ingestion_status, authenticity_status FROM ca_connections WHERE race_project_id IN (${raceProjectIds.map(() => '?').join(',')})`, raceProjectIds)
     : [];
 
-  res.json({
+  ok(res, {
     race: { id: race.id, title: race.title, slug: race.slug, status: race.status },
-    projections: projections.map(p => ({
-      ...p,
-      metrics: JSON.parse(p.metrics || "{}"),
-      risks: JSON.parse(p.risks || "[]"),
-      connection: connStatuses.find(c => c.race_project_id === p.race_project_id) || {},
-    })),
+    projections: projections.map(p => {
+      const rider = riderNames.find(r => r.rp_id === p.race_project_id);
+      return {
+        ...p,
+        rider_name: rider?.display_name || "未知骑手",
+        rider_slug: rider?.slug || "",
+        metrics: JSON.parse(p.metrics || "{}"),
+        risks: JSON.parse(p.risks || "[]"),
+        connection: connStatuses.find(c => c.race_project_id === p.race_project_id) || {},
+      };
+    }),
     recentEvents: recentEvents.map(e => ({
       ...e,
       rider_name: e.rider_name || "未知",
@@ -666,7 +819,7 @@ app.get("/api/live-hall/:raceId", (req, res) => {
 app.get("/api/projections/:raceProjectId", (req, res) => {
   const p = get("SELECT * FROM race_projections WHERE race_project_id = ?", [req.params.raceProjectId]);
   if (!p) return notFound(res, "Projection");
-  res.json({ ...p, metrics: JSON.parse(p.metrics || "{}"), risks: JSON.parse(p.risks || "[]") });
+  ok(res, { ...p, metrics: JSON.parse(p.metrics || "{}"), risks: JSON.parse(p.risks || "[]") });
 });
 
 // ==================== DEV-5: Session Management ====================
@@ -679,9 +832,9 @@ app.post("/api/sessions", (req, res) => {
   const caConn = get("SELECT * FROM ca_connections WHERE id = ?", [caConnectionId]);
   if (!caConn) return notFound(res, "CAConnection");
 
-  if (!req.user) return res.status(401).json({ error: "未登录" });
+  if (!req.user) return unauthorized(res);
   if (req.user.id !== caConn.user_id && !req.user.roles.includes("admin")) {
-    return res.status(403).json({ error: "权限不足，您只能为自己的 CA 连接管理 Session" });
+    return forbidden(res, "您只能为自己的 CA 连接管理 Session");
   }
 
   const t = now();
@@ -695,7 +848,7 @@ app.post("/api/sessions", (req, res) => {
     // Update CA connection status to active
     update("ca_connections", caConnectionId, { ingestion_status: "active", last_handshake_at: t, updated_at: t });
     save();
-    res.status(201).json({ id, status: "active" });
+    created(res, { id, status: "active" });
   } catch (e) {
     throw new AppError("Session 创建失败: " + e.message, "CONFLICT", 409);
   }
@@ -709,7 +862,7 @@ app.get("/api/sessions", (req, res) => {
   if (raceProjectId) { sql += " AND race_project_id = ?"; params.push(raceProjectId); }
   if (caConnectionId) { sql += " AND ca_connection_id = ?"; params.push(caConnectionId); }
   sql += " ORDER BY started_at DESC";
-  res.json(all(sql, params).map(s => ({ ...s, metrics: JSON.parse(s.metrics || "{}") })));
+  list(res, all(sql, params).map(s => ({ ...s, metrics: JSON.parse(s.metrics || "{}") })));
 });
 
 // ==================== RaceProject Routes ====================
@@ -721,7 +874,7 @@ app.get("/api/race-projects", (req, res) => {
   const params = [];
   if (registrationId) { sql += " AND registration_id = ?"; params.push(registrationId); }
   if (userId) { sql += " AND user_id = ?"; params.push(userId); }
-  res.json(all(sql, params).map((rp) => ({
+  list(res, all(sql, params).map((rp) => ({
     ...rp,
     authenticity_summary: JSON.parse(rp.authenticity_summary || "{}"),
     review_flags: JSON.parse(rp.review_flags || "[]"),
@@ -736,7 +889,7 @@ app.post("/api/judge-assignments", requireAuth, (req, res) => {
   if (!raceId || !workId || !judgeUserId) return badRequest(res, "raceId, workId, judgeUserId 必填");
 
   if (!isOrganizerOfRace(req.user, raceId)) {
-    return res.status(403).json({ error: "权限不足，您不是该赛事的主办方" });
+    return forbidden(res, "您不是该赛事的主办方");
   }
 
   const t = now();
@@ -749,7 +902,7 @@ app.post("/api/judge-assignments", requireAuth, (req, res) => {
     );
     save();
     logger.info("judge", "Judge assigned", { id, workId, judgeUserId });
-    res.status(201).json({ id, status: "assigned" });
+    created(res, { id, status: "assigned" });
   } catch (e) {
     throw new AppError("分配冲突: " + e.message, "CONFLICT", 409);
   }
@@ -763,14 +916,14 @@ app.get("/api/judge-assignments", (req, res) => {
   if (judgeUserId) { sql += " AND ja.judge_user_id = ?"; params.push(judgeUserId); }
   if (raceId) { sql += " AND ja.race_id = ?"; params.push(raceId); }
   sql += " ORDER BY ja.created_at DESC";
-  res.json(all(sql, params));
+  list(res, all(sql, params));
 });
 
 // DELETE /api/judge-assignments/:id — remove a judge assignment
 app.delete("/api/judge-assignments/:id", requireAuth, (req, res) => {
   run("DELETE FROM judge_assignments WHERE id = ?", [req.params.id]);
   save();
-  res.json({ ok: true });
+  ok(res, {});
 });
 
 // ==================== Judging Record Routes ====================
@@ -781,13 +934,13 @@ app.post("/api/judging-records", requireAuth, (req, res) => {
   if (!judgeAssignmentId || !workId || !judgeUserId) return badRequest(res, "必填字段缺失 (judgeAssignmentId, workId, judgeUserId)");
 
   if (req.user.id !== judgeUserId && !req.user.roles.includes("admin")) {
-    return res.status(403).json({ error: "权限不足，您只能以本人的身份提交评审" });
+    return forbidden(res, "您只能以本人的身份提交评审");
   }
 
   const assignment = get("SELECT * FROM judge_assignments WHERE id = ?", [judgeAssignmentId]);
-  if (!assignment) return res.status(404).json({ error: "评委分配不存在" });
+  if (!assignment) return notFound(res, "评委分配");
   if (assignment.judge_user_id !== judgeUserId) {
-    return res.status(400).json({ error: "分配对应的评委不符" });
+    return badRequest(res, "分配对应的评委不符");
   }
 
   const t = now();
@@ -802,7 +955,7 @@ app.post("/api/judging-records", requireAuth, (req, res) => {
     run("UPDATE judge_assignments SET status = 'completed', completed_at = ?, updated_at = ? WHERE id = ?", [t, t, judgeAssignmentId]);
     save();
     logger.info("judge", "Judging record submitted", { id, workId, judgeUserId });
-    res.status(201).json({ id, status: "submitted" });
+    created(res, { id, status: "submitted" });
   } catch (e) {
     throw new AppError("评审记录冲突: " + e.message, "CONFLICT", 409);
   }
@@ -816,7 +969,7 @@ app.get("/api/judging-records", (req, res) => {
   if (judgeUserId) { sql += " AND jr.judge_user_id = ?"; params.push(judgeUserId); }
   if (workId) { sql += " AND jr.work_id = ?"; params.push(workId); }
   sql += " ORDER BY jr.created_at DESC";
-  res.json(all(sql, params).map(r => ({
+  list(res, all(sql, params).map(r => ({
     ...r,
     score_result: JSON.parse(r.score_result || "{}"),
     score_riding: JSON.parse(r.score_riding || "{}"),
@@ -828,7 +981,7 @@ app.get("/api/judging-records", (req, res) => {
 // GET /api/awards — list all awards
 app.get("/api/awards", (_req, res) => {
   const awards = all("SELECT * FROM awards ORDER BY created_at DESC");
-  res.json(awards);
+  list(res, awards);
 });
 
 // POST /api/awards — create an award for a registration
@@ -837,7 +990,7 @@ app.post("/api/awards", requireAuth, (req, res) => {
   if (!raceId || !registrationId || !awardName) return badRequest(res, "raceId, registrationId, awardName 必填");
 
   if (!isOrganizerOfRace(req.user, raceId)) {
-    return res.status(403).json({ error: "权限不足，您不是该赛事的主办方" });
+    return forbidden(res, "您不是该赛事的主办方");
   }
 
   const t = now();
@@ -850,7 +1003,7 @@ app.post("/api/awards", requireAuth, (req, res) => {
     );
     save();
     logger.info("award", "Award created", { id, raceId, awardName });
-    res.status(201).json({ id, status: "draft" });
+    created(res, { id, status: "draft" });
   } catch (e) {
     throw new AppError("奖项创建冲突: " + e.message, "CONFLICT", 409);
   }
@@ -866,19 +1019,19 @@ app.put("/api/awards/:id/publish", requireAuth, (req, res) => {
   if (!valid) return conflictErr(res, `无法发布: ${reason}`);
 
   if (!isOrganizerOfRace(req.user, award.race_id)) {
-    return res.status(403).json({ error: "权限不足，您不是该赛事的主办方" });
+    return forbidden(res, "您不是该赛事的主办方");
   }
 
   const transition = awardCanTransition(award.status, "published");
   if (!transition.ok) {
-    return res.status(400).json({ error: `无法发布奖项: ${transition.reason}` });
+    return badRequest(res, `无法发布奖项: ${transition.reason}`);
   }
 
   const t = now();
   update("awards", award.id, { status: "published", published_at: t, updated_at: t });
   save();
   logger.info("award", "Award published", { id: award.id, awardName: award.award_name });
-  res.json({ ok: true, id: award.id, status: "published" });
+  ok(res, { id: award.id, status: "published" });
 });
 
 // PUT /api/awards/:id — update award
@@ -887,7 +1040,7 @@ app.put("/api/awards/:id", requireAuth, (req, res) => {
   if (!award) return notFound(res, "奖项");
 
   if (!isOrganizerOfRace(req.user, award.race_id)) {
-    return res.status(403).json({ error: "权限不足，您不是该赛事的主办方" });
+    return forbidden(res, "您不是该赛事的主办方");
   }
 
   const { awardName, rank, decisionReason } = req.body;
@@ -898,7 +1051,7 @@ app.put("/api/awards/:id", requireAuth, (req, res) => {
   patch.updated_at = now();
   update("awards", award.id, patch);
   save();
-  res.json({ ok: true, id: award.id });
+  ok(res, { id: award.id });
 });
 
 // ==================== DEV-7: Report Generator ====================
@@ -909,7 +1062,7 @@ app.get("/api/health", async (_req, res, next) => {
     const raceCount = all("SELECT COUNT(*) as count FROM races")[0]?.count || 0;
     const userCount = all("SELECT COUNT(*) as count FROM users")[0]?.count || 0;
     const dbStats = fs.existsSync(config.dbPath) ? fs.statSync(config.dbPath) : null;
-    res.json({
+    ok(res, {
       status: "ok",
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
@@ -927,14 +1080,14 @@ app.post("/api/reports/generate", requireAuth, (req, res) => {
 
   if (reportType === "race_report" || reportType === "review_summary") {
     if (!isOrganizerOfRace(req.user, raceId)) {
-      return res.status(403).json({ error: "权限不足，不是该赛事的主办方" });
+      return forbidden(res, "不是该赛事的主办方");
     }
   } else if (reportType === "rider_report") {
-    if (!subjectRegistrationId) return res.status(400).json({ error: "rider_report 需要 subjectRegistrationId" });
+    if (!subjectRegistrationId) return badRequest(res, "rider_report 需要 subjectRegistrationId");
     const reg = get("SELECT * FROM registrations WHERE id = ?", [subjectRegistrationId]);
-    if (!reg) return res.status(404).json({ error: "报名不存在" });
+    if (!reg) return notFound(res, "报名");
     if (req.user.id !== reg.user_id && !isOrganizerOfRace(req.user, raceId)) {
-      return res.status(403).json({ error: "权限不足，只能生成自己的或主办赛事的骑手报告" });
+      return forbidden(res, "只能生成自己的或主办赛事的骑手报告");
     }
   }
 
@@ -1002,7 +1155,7 @@ app.post("/api/reports/generate", requireAuth, (req, res) => {
     );
     save();
     logger.info("report", "Report generated", { id: reportId, reportType, raceId });
-    res.status(201).json({ id: reportId, title, reportType, status: "generated" });
+    created(res, { id: reportId, title, reportType, status: "generated" });
   } catch (e) {
     throw new AppError("报告生成失败: " + e.message, "CONFLICT", 409);
   }
@@ -1016,7 +1169,7 @@ app.get("/api/reports", (req, res) => {
   if (raceId) { sql += " AND race_id = ?"; params.push(raceId); }
   if (reportType) { sql += " AND report_type = ?"; params.push(reportType); }
   sql += " ORDER BY created_at DESC";
-  res.json(all(sql, params).map(r => ({ ...r, generated_from: JSON.parse(r.generated_from || "{}") })));
+  list(res, all(sql, params).map(r => ({ ...r, generated_from: JSON.parse(r.generated_from || "{}") })));
 });
 
 // PUT /api/reports/:id/publish — publish a report
@@ -1025,14 +1178,14 @@ app.put("/api/reports/:id/publish", requireAuth, (req, res) => {
   if (!report) return notFound(res, "报告");
 
   if (!isOrganizerOfRace(req.user, report.race_id)) {
-    return res.status(403).json({ error: "权限不足，您不是该赛事的主办方" });
+    return forbidden(res, "您不是该赛事的主办方");
   }
 
   const t = now();
   update("reports", report.id, { status: "published", published_at: t, updated_at: t, visibility: "public" });
   save();
   logger.info("report", "Report published", { id: report.id });
-  res.json({ ok: true, id: report.id, status: "published" });
+  ok(res, { id: report.id, status: "published" });
 });
 
 // ==================== Dashboard / Stats ====================
@@ -1045,7 +1198,7 @@ app.get("/api/stats", (_req, res) => {
   const riderCount = all("SELECT COUNT(DISTINCT user_id) as count FROM registrations")[0]?.count || 0;
   const workCount = all("SELECT COUNT(*) as count FROM works WHERE status = 'submitted'")[0]?.count || 0;
 
-  res.json({
+  ok(res, {
     total_races: raceCount,
     live_race: liveRace ? { slug: liveRace.slug, title: liveRace.title, status: liveRace.status } : null,
     completed_races: completedRaceCount,

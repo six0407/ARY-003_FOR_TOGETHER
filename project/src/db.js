@@ -123,6 +123,7 @@ function runMigrations() {
       organizer_user_ids TEXT DEFAULT '[]',
       created_by_user_id TEXT DEFAULT '',
       visibility TEXT DEFAULT 'public',
+      repo_url TEXT DEFAULT '',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       version INTEGER DEFAULT 1
@@ -462,12 +463,28 @@ function runMigrations() {
 
 // --- Seed demo data ---
 export function seedDemo(overrides = {}) {
+  // Clean existing demo data to ensure fresh state
+  run("DELETE FROM awards");
+  run("DELETE FROM reports");
+  run("DELETE FROM judging_records");
+  run("DELETE FROM judge_assignments");
+  run("DELETE FROM works");
+  run("DELETE FROM race_projections");
+  run("DELETE FROM race_projects");
+  run("DELETE FROM sessions");
+  run("DELETE FROM ca_messages");
+  run("DELETE FROM ca_connections");
+  run("DELETE FROM registrations");
+  run("DELETE FROM races");
+  run("DELETE FROM users");
+  save();
+
   const t = now();
 
   // Organizer user
   const orgId = uid();
   run(
-    `INSERT OR IGNORE INTO users (id, github_account_id, slug, display_name, roles, created_at, updated_at)
+    `INSERT INTO users (id, github_account_id, slug, display_name, roles, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [orgId, "gh-organizer", "organizer", "赛事主办方", '["organizer","admin"]', t, t],
   );
@@ -478,6 +495,20 @@ export function seedDemo(overrides = {}) {
     `INSERT OR IGNORE INTO users (id, github_account_id, slug, display_name, roles, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [riderId, "gh-rider", "rider-001", "骑手小明", '["rider"]', t, t],
+  );
+
+  // Extra demo riders
+  const riderAliceId = uid();
+  run(
+    `INSERT OR IGNORE INTO users (id, github_account_id, slug, display_name, roles, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [riderAliceId, "gh-alice", "rider-alice", " Alice Wang", '["rider"]', t, t],
+  );
+  const riderBobId = uid();
+  run(
+    `INSERT OR IGNORE INTO users (id, github_account_id, slug, display_name, roles, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [riderBobId, "gh-bob", "rider-bob", "Bob Chen", '["rider"]', t, t],
   );
 
   // Judge user
@@ -573,12 +604,42 @@ export function seedDemo(overrides = {}) {
     [reg1Id, race1Id, riderId, "approved", t, t, orgId, t, t],
   );
 
+  // More registrations for race1 (running race — show multiple riders)
+  const regAliceRace1 = uid();
+  run(
+    `INSERT OR IGNORE INTO registrations (id, race_id, user_id, status, submitted_at, approved_at, approved_by_user_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [regAliceRace1, race1Id, riderAliceId, "approved", t, t, orgId, t, t],
+  );
+
+  // Registrations for race2 (registration-open race — show diverse statuses)
+  const reg2Submitted = uid();
+  run(
+    `INSERT OR IGNORE INTO registrations (id, race_id, user_id, status, submitted_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [reg2Submitted, race2Id, riderAliceId, "submitted", t, t, t],
+  );
+  const reg2Approved = uid();
+  run(
+    `INSERT OR IGNORE INTO registrations (id, race_id, user_id, status, submitted_at, approved_at, approved_by_user_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [reg2Approved, race2Id, riderBobId, "approved", t, t, orgId, t, t],
+  );
+
   // RaceProject for reg1
   const rp1Id = uid();
   run(
     `INSERT OR IGNORE INTO race_projects (id, registration_id, race_id, user_id, aggregate_ingestion_status, connection_health, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [rp1Id, reg1Id, race1Id, riderId, "active", "ok", t, t],
+  );
+
+  // RaceProject for alice in race1
+  const rpAliceId = uid();
+  run(
+    `INSERT OR IGNORE INTO race_projects (id, registration_id, race_id, user_id, aggregate_ingestion_status, connection_health, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [rpAliceId, regAliceRace1, race1Id, riderAliceId, "active", "ok", t, t],
   );
 
   // Work for reg1
@@ -601,6 +662,52 @@ export function seedDemo(overrides = {}) {
     ],
   );
 
+  // Work for alice in race1
+  const workAliceId = uid();
+  run(
+    `INSERT OR IGNORE INTO works (id, registration_id, race_id, owner_user_id, title, summary, description, status, submitted_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      workAliceId,
+      regAliceRace1,
+      race1Id,
+      riderAliceId,
+      "实时骑行数据可视化面板",
+      "一个基于 D3.js 的实时数据看板，展示 Agent 骑行过程中的 token 消耗、进度和风险指标。",
+      "## 技术栈\n- D3.js\n- WebSocket\n- Express\n\n## 特点\n- 实时数据流渲染\n- 可交互的图表\n- 响应式布局",
+      "submitted",
+      t,
+      t,
+      t,
+    ],
+  );
+
+  // Demo projections for race1 (Live Hall demo data)
+  const proj1Id = uid();
+  run(
+    `INSERT OR IGNORE INTO race_projections (id, race_project_id, race_id, registration_id, user_id, metrics, risks, latest_event_type, latest_event_summary, latest_event_at, leaderboard_rank, last_updated_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      proj1Id, rp1Id, race1Id, reg1Id, riderId,
+      JSON.stringify({ tokensUsed: 45800, progressPercent: 72, sessionsCount: 8, phase: "coding" }),
+      JSON.stringify([]),
+      "progress_update", "正在实现代码审查模块的核心逻辑...", t,
+      1, t, t, t,
+    ],
+  );
+  const projAliceId = uid();
+  run(
+    `INSERT OR IGNORE INTO race_projections (id, race_project_id, race_id, registration_id, user_id, metrics, risks, latest_event_type, latest_event_summary, latest_event_at, leaderboard_rank, last_updated_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      projAliceId, rpAliceId, race1Id, regAliceRace1, riderAliceId,
+      JSON.stringify({ tokensUsed: 32100, progressPercent: 55, sessionsCount: 6, phase: "debugging" }),
+      JSON.stringify(["任务阻塞"]),
+      "blocked", "遇到数据渲染性能问题，正在优化查询逻辑...", t,
+      2, t, t, t,
+    ],
+  );
+
   // Award for race3
   const awardId = uid();
   run(
@@ -615,13 +722,20 @@ export function seedDemo(overrides = {}) {
   return {
     organizerId: orgId,
     riderId,
+    riderAliceId,
+    riderBobId,
     judgeId,
     race1Id,
     race2Id,
     race3Id,
     reg1Id,
+    regAliceRace1,
+    reg2Submitted,
+    reg2Approved,
     rp1Id,
+    rpAliceId,
     work1Id,
+    workAliceId,
   };
 }
 

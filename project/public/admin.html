@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Admin Console — ARY</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./app.css" />
   <style>
     .admin-shell { position:absolute;inset:0;display:flex;flex-direction:column;background:#f8fafc; }
     .admin-header { display:flex;align-items:center;justify-content:space-between;padding:8px 24px;background:#fff;border-bottom:1px solid var(--line); }
@@ -95,24 +95,32 @@
 const App = { users: [], editingUser: null, currentUser: null };
 
 async function init() {
-  const userId = sessionStorage.getItem('ary_console_user');
-  if (!userId) {
+  // Check both storage keys (cross-tab support via localStorage)
+  const userId = localStorage.getItem('ary_token') || sessionStorage.getItem('ary_console_user') || sessionStorage.getItem('ary_token');
+  const token = userId ? (userId.startsWith('demo-token-') ? userId : `demo-token-${userId}`) : null;
+  if (!token) {
     alert("请先在控制台登录！");
     window.location.href = '/console';
     return;
   }
 
+  // Simple safeJson for admin page
+  async function safeJson(res, def) {
+    if (!res.ok) return def;
+    try { const b = await res.json(); if (b.success !== undefined) return b.success ? (b.data ?? def) : def; if (b.error) return def; return b; } catch { return def; }
+  }
+
   try {
     // 1. Fetch current user to verify admin role
     const meRes = await fetch('/api/users/me', {
-      headers: { 'Authorization': 'Bearer demo-token-' + userId }
+      headers: { 'Authorization': 'Bearer ' + token }
     });
-    if (!meRes.ok) {
+    App.currentUser = await safeJson(meRes, null);
+    if (!App.currentUser) {
       alert("登录已失效，请重新登录！");
       window.location.href = '/console';
       return;
     }
-    App.currentUser = await meRes.json();
     if (!App.currentUser.roles.includes('admin')) {
       document.body.innerHTML = `
         <div style="font-family:system-ui;text-align:center;padding:50px;color:var(--text);height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f8fafc;">
@@ -131,13 +139,12 @@ async function init() {
 
     // 3. Fetch users
     const res = await fetch('/api/auth/users', {
-      headers: { 'Authorization': 'Bearer demo-token-' + userId }
+      headers: { 'Authorization': 'Bearer ' + token }
     });
-    if (!res.ok) {
-      const data = await res.json();
-      throw new Error(data.error || '获取用户列表失败');
+    App.users = await safeJson(res, []);
+    if (!App.users.length) {
+      throw new Error('获取用户列表失败');
     }
-    App.users = await res.json();
     renderTable();
   } catch (e) {
     document.getElementById('admin-content').innerHTML = `<div class="empty-state">加载失败: ${e.message}</div>`;
@@ -215,25 +222,26 @@ async function saveRoles() {
   const roles = ['rider','judge','organizer','admin'].filter(k => document.getElementById(`role-${k}`).checked);
 
   try {
+    const token = localStorage.getItem('ary_token') || `demo-token-${sessionStorage.getItem('ary_console_user')}`;
     const res = await fetch(`/api/auth/users/${App.editingUser.id}/roles`, {
       method: 'PUT',
       headers: { 
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer demo-token-' + userId
+        'Authorization': 'Bearer ' + token
       },
       body: JSON.stringify({ roles }),
     });
-    const data = await res.json();
-    if (res.ok && data.ok) {
+    const data = await safeJson(res, null);
+    if (data && data.id) {
       closeRoleEditor();
       // Refresh
       const usersRes = await fetch('/api/auth/users', {
-        headers: { 'Authorization': 'Bearer demo-token-' + userId }
+        headers: { 'Authorization': 'Bearer ' + token }
       });
-      App.users = await usersRes.json();
+      App.users = await safeJson(usersRes, []);
       renderTable();
     } else {
-      alert('保存失败: ' + (data.error || '未知错误'));
+      alert('保存失败: ' + ((data && data.error) ? (data.error.message || data.error) : '未知错误'));
     }
   } catch (e) {
     alert('请求失败: ' + e.message);

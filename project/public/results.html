@@ -18,7 +18,7 @@
       <a href="/results.html" class="active">Results</a>
       <a href="/cooperation.html">Cooperation</a>
     </nav>
-    <div class="user-area">
+    <div class="user-area" id="auth-area">
       <a href="/console" class="btn btn-outline btn-sm">Console →</a>
     </div>
   </header>
@@ -33,11 +33,12 @@
 
   <footer class="ary-footer">Agent Racing Yard · MVP v0.2</footer>
 
+  <script src="/auth.js"></script>
   <script>
     async function load() {
       try {
-        const racesRes = await fetch("/api/races");
-        const races = await racesRes.json();
+        const races = await safeFetch("/api/races");
+        if (!races) throw new Error("加载失败");
         const completed = races.filter((r) => r.status === "completed");
 
         if (!completed.length) {
@@ -50,8 +51,7 @@
         const resultsHTML = await Promise.all(
           completed.map(async (race) => {
             try {
-              const res = await fetch(`/api/races/${race.slug}/results`);
-              const awards = await res.json();
+              const awards = await safeFetch(`/api/races/${race.slug}/results`);
               return renderRaceResults(race, awards);
             } catch {
               return "";
@@ -100,6 +100,7 @@
     }
 
     load();
+    initAuth();
   </script>
 </body>
 </html>

@@ -46,21 +46,24 @@ describe("Public GET endpoints", () => {
   it("GET /api/races returns array", async () => {
     const { status, body } = await fetchJson("/api/races");
     assert.equal(status, 200);
-    assert.ok(Array.isArray(body));
+    assert.equal(body.success, true);
+    assert.ok(Array.isArray(body.data));
   });
 
   it("GET /api/stats returns stats object", async () => {
     const { status, body } = await fetchJson("/api/stats");
     assert.equal(status, 200);
-    assert.ok("total_races" in body);
-    assert.ok("total_riders" in body);
+    assert.equal(body.success, true);
+    assert.ok("total_races" in body.data);
+    assert.ok("total_riders" in body.data);
   });
 
   it("GET /api/health returns ok", async () => {
     const { status, body } = await fetchJson("/api/health");
     assert.equal(status, 200);
-    assert.equal(body.status, "ok");
-    assert.ok("uptime" in body);
+    assert.equal(body.success, true);
+    assert.equal(body.data.status, "ok");
+    assert.ok("uptime" in body.data);
   });
 });
 
@@ -149,10 +152,11 @@ describe("Auth success path", () => {
       body: JSON.stringify({ githubAccountId: "gh-organizer" }),
     });
     assert.equal(status, 200);
-    assert.ok(body.token);
-    assert.ok(body.token.startsWith("demo-token-"));
-    token = body.token;
-    userId = body.user.id;
+    assert.equal(body.success, true);
+    assert.ok(body.data.token);
+    assert.ok(body.data.token.startsWith("demo-token-"));
+    token = body.data.token;
+    userId = body.data.user.id;
   });
 
   it("GET /api/users/me with token returns user", async () => {
@@ -160,7 +164,8 @@ describe("Auth success path", () => {
       headers: { Authorization: `Bearer ${token}` },
     });
     assert.equal(status, 200);
-    assert.ok(body.roles);
+    assert.equal(body.success, true);
+    assert.ok(body.data.roles);
   });
 
   it("PUT /api/auth/users/:id/roles with admin token succeeds", async () => {
@@ -170,7 +175,8 @@ describe("Auth success path", () => {
       body: JSON.stringify({ roles: ["admin", "organizer"] }),
     });
     assert.equal(status, 200);
-    assert.equal(body.ok, true);
+    assert.equal(body.success, true);
+    assert.ok(body.data.id);
   });
 });
 
@@ -183,11 +189,11 @@ describe("State machine enforcement", () => {
       method: "POST",
       body: JSON.stringify({ githubAccountId: "gh-organizer" }),
     });
-    const token = login.token;
+    const token = login.data.token;
 
     // Get first race
     const races = await fetchJson("/api/races");
-    const race = races.body[0];
+    const race = races.body.data[0];
     if (!race) return; // no races in DB
 
     // Try to jump from draft directly to completed (should fail)
@@ -209,9 +215,20 @@ describe("State machine enforcement", () => {
 // ==================== Registration Validation ====================
 
 describe("Registration flow", () => {
+  let token;
+
+  before(async () => {
+    const { body: login } = await fetchJson("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ githubAccountId: "gh-organizer" }),
+    });
+    token = login.data.token;
+  });
+
   it("POST /api/registrations with missing fields returns 400", async () => {
     const { status, body } = await fetchJson("/api/registrations", {
       method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
       body: JSON.stringify({}),
     });
     assert.equal(status, 400);
@@ -222,6 +239,7 @@ describe("Registration flow", () => {
   it("POST /api/registrations with non-existent race returns 404", async () => {
     const { status, body } = await fetchJson("/api/registrations", {
       method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
       body: JSON.stringify({ raceId: "nonexistent-id", userId: "user-1" }),
     });
     assert.equal(status, 404);

@@ -7,3 +7,7 @@ project/db/*.sqlite-journal
 project/logs/*.log
 project/backups/
 *.log
+
+# Environment secrets
+.env
+project/.env
