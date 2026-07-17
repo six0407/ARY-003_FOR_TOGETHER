@@ -14,9 +14,9 @@ import { logger } from "./logger.js";
 import { ok, list, created, fail, notFound, badRequest, unauthorized, forbidden, conflictErr, internalError } from "./response.js";
 import { required, oneOf, firstError } from "./validate.js";
 import { AppError, errorHandler } from "./middleware/error-handler.js";
-import { requireAuth, requireRole } from "./middleware/auth-guard.js";
+import { requireRole } from "./middleware/auth-guard.js";
 import {
-  raceCanTransition, registrationCanTransition, workCanTransition, awardCanTransition,
+  raceCanTransition, registrationCanTransition, awardCanTransition,
 } from "./state-machine.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

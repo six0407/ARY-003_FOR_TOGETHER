@@ -41,8 +41,9 @@ function isAssigned(workId, user) {
 
 function isManagedRace(resource, user) {
   if (!user) return false;
-  const hasOrganizerRole = user.roles.includes("organizer") || user.roles.includes("admin");
-  if (!hasOrganizerRole) return false;
+  // Admin always has full access to any race
+  if (user.roles.includes("admin")) return true;
+  if (!user.roles.includes("organizer")) return false;
   const uid = user.id || user.userId;
 
   // Resolve raceId from resource

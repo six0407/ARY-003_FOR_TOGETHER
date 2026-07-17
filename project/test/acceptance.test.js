@@ -254,4 +254,84 @@ describe("DEV-1 Acceptance Tests", () => {
     it("managedRaceGate", () => { const o = createUser({ roles: ["organizer"] }).record; const r = createRace({ organizerUserIds: [o.id], createdByUserId: o.id }).record; assert.ok(managedRaceGate({ raceId: r.id }, o)); assert.equal(managedRaceGate({ raceId: "x" }, o), false); });
     it("adminGate", () => { assert.ok(adminGate(createUser({ roles: ["admin"] }).record)); assert.equal(adminGate(createUser({ roles: ["rider"] }).record), false); });
   });
+
+  // ======== 004 新增测试：权限管控 & 作品编辑 ========
+
+  describe("004: 权限归属校验", () => {
+    it("骑手只能为自己报名（ownGate）", () => {
+      const rider = createUser({ roles: ["rider"] }).record;
+      const other = createUser({ roles: ["rider"] }).record;
+      const race = createRace({ status: "registration" }).record;
+      // rider 为自己报名 → 应成功
+      assert.ok(submitRegistration(race.id, rider.id).ok);
+      // 验证 ownGate 拒绝跨用户操作
+      assert.equal(ownGate({ userId: rider.id }, other), false);
+    });
+
+    it("评委只能以本人身份提交评审记录", () => {
+      const judgeA = createUser({ roles: ["judge"] }).record;
+      const judgeB = createUser({ roles: ["judge"] }).record;
+      const w = createWork({ status: "locked" }).record;
+      const as = createJudgeAssignment({ workId: w.id, judgeUserId: judgeA.id }).record;
+      // judgeB 试图以 judgeA 的身份提交评审 → assignedGate 应拒绝
+      assert.equal(assignedGate(w.id, judgeB), false);
+      // judgeA 提交 → assignedGate 应通过
+      assert.ok(assignedGate(w.id, judgeA));
+    });
+
+    it("非 organizer 不能管理赛事资源（managedRaceGate）", () => {
+      const org = createUser({ roles: ["organizer"] }).record;
+      const rider = createUser({ roles: ["rider"] }).record;
+      const race = createRace({ createdByUserId: org.id, organizerUserIds: [org.id] }).record;
+      // organizer → 通过 (在 organizerUserIds 中)
+      assert.ok(managedRaceGate({ raceId: race.id }, org));
+      // rider → 拒绝
+      assert.equal(managedRaceGate({ raceId: race.id }, rider), false);
+    });
+
+    it("admin 自动获得所有赛事管理权限", () => {
+      const admin = createUser({ roles: ["admin"] }).record;
+      const race = createRace({ createdByUserId: "someone-else", organizerUserIds: [] }).record;
+      // admin 即使不在 organizerUserIds 中也应通过
+      assert.ok(managedRaceGate({ raceId: race.id }, admin));
+    });
+  });
+
+  describe("004: 作品编辑与锁定", () => {
+    it("draft 作品可编辑（workCanTransition 允许 draft→submitted）", () => {
+      assert.ok(workCanTransition("draft", "submitted").ok);
+    });
+
+    it("submitted 作品可被锁定（workCanTransition 允许 submitted→locked）", () => {
+      assert.ok(workCanTransition("submitted", "locked").ok);
+    });
+
+    it("locked 作品不可回退到 draft", () => {
+      assert.equal(workCanTransition("locked", "draft").ok, false);
+    });
+
+    it("locked 作品不可回退到 submitted", () => {
+      assert.equal(workCanTransition("locked", "submitted").ok, false);
+    });
+
+    it("通过 business.submitWork 更新已有作品", () => {
+      const reg = createRegistration({ status: "approved" }).record;
+      const w = createWork({ registrationId: reg.id, raceId: reg.raceId, ownerUserId: reg.userId, status: "draft" }).record;
+      // 更新作品（从 draft → submitted）
+      const result = submitWork(reg.id, { title: "更新后的作品", summary: "新摘要" });
+      assert.ok(result.ok);
+      assert.equal(result.updated, true);
+      const updated = stores.works.get(w.id);
+      assert.equal(updated.title, "更新后的作品");
+      assert.equal(updated.status, "submitted");
+    });
+
+    it("locked 作品无法通过 business.submitWork 更新", () => {
+      const reg = createRegistration({ status: "approved" }).record;
+      createWork({ registrationId: reg.id, raceId: reg.raceId, ownerUserId: reg.userId, status: "locked" }).record;
+      const result = submitWork(reg.id, { title: "尝试修改" });
+      assert.equal(result.ok, false);
+      assert.match(result.reason, /locked/);
+    });
+  });
 });

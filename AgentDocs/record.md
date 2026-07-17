@@ -298,3 +298,61 @@ PUT  /api/reports/:id/publish  — 发布报告
 ### 状态更新
 - `STATUS.md`：REL-1 ✅ 完成、OPS-1 ✅ 完成
 - `PLAN.md`：近期待更新
+
+## 2026-07-17 — 004 第一次后端优化 代码审查与改进
+
+### 背景
+基于 commit `cad4af8`（"004第一次后端优化"），进行了全面的代码审查、问题修复、测试补充和文档更新。
+
+### 004 改动分析
+
+**后端安全加固（app.js — 9 个文件，+404/-36 行）：**
+
+| 改动 | 说明 |
+| --- | --- |
+| 全局 Auth 中间件 | 每个请求自动解析 Bearer token → 查库 → 设 `req.user` |
+| 内联 `requireAuth` / `requireAdmin` / `isOrganizerOfRace` | 简化的鉴权辅助函数 |
+| 14 个 API 端点权限收紧 | 报名、作品、CA 连接、Session、评委分配、评审记录、奖项、报告全部新增归属/角色校验 |
+| `PUT /api/works/:id` | 🆕 新增作品编辑端点（locked 状态不可编辑） |
+| 状态机流转校验 | `approve` 和 `publish` 操作增加状态机二次校验 |
+
+**前端增强：**
+
+| 文件 | 改动 |
+| --- | --- |
+| `admin.html` | 登录态检测 + Admin 角色门禁 + Auth header |
+| `console.html` | fetch 拦截器自动注入 Auth + safeJson 容错 + Judge 工作台 + 作品编辑 UI |
+| `live-hall.html` | 赛事选择器下拉框 |
+
+### 发现并修复的问题
+
+| 问题 | 根因 | 修复 |
+| --- | --- | --- |
+| `requireAuth` 重复定义 | `auth-guard.js` 导出版本被 app.js 内联函数覆盖，import 无效 | 移除 import 中未使用的 `requireAuth` |
+| `workCanTransition` 未使用 | import 但 PUT /api/works 用硬编码 `=== "locked"` 判断 | 移除未使用的 import |
+| `auth.js` admin 权限不一致 | `isManagedRace` 中 admin 仍需出现在 `organizerUserIds`，与 `app.js` 的 `isOrganizerOfRace` 矛盾 | `isManagedRace` 增加 admin 提前返回 `true` |
+
+### 新增测试（10 条）
+
+**`004: 权限归属校验`（4 条）：**
+- 骑手只能为自己报名
+- 评委只能以本人身份提交评审记录
+- 非 organizer 不能管理赛事资源
+- admin 自动获得所有赛事管理权限
+
+**`004: 作品编辑与锁定`（6 条）：**
+- draft → submitted 状态流转
+- submitted → locked 状态流转
+- locked 不可回退 draft/submitted
+- business.submitWork 更新已有作品
+- locked 作品拒绝更新
+
+### 验证结果
+- ✅ `npm test` — **56 条全部通过**（原 46 条 + 新增 10 条）
+- ✅ 无破坏性变更
+
+### 待处理
+- [ ] 从 upstream (DiSod) 拉取 GitHub OAuth + UI 重构（当前 GitHub 网络不可达）
+- [ ] 前端页面端到端功能验证（需启动服务器逐页测试）
+- [ ] `PUT /api/works/:id` 改用 `workCanTransition` 替代硬编码状态检查
+- [ ] 考虑将 `isOrganizerOfRace` 提取为共享函数，消除 app.js 和 auth.js 的重复逻辑
