@@ -681,6 +681,32 @@ export function seedDemo(overrides = {}) {
     ],
   );
 
+  // Demo projections for race1 (Live Hall demo data)
+  const proj1Id = uid();
+  run(
+    `INSERT OR IGNORE INTO race_projections (id, race_project_id, race_id, registration_id, user_id, metrics, risks, latest_event_type, latest_event_summary, latest_event_at, leaderboard_rank, last_updated_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      proj1Id, rp1Id, race1Id, reg1Id, riderId,
+      JSON.stringify({ tokensUsed: 45800, progressPercent: 72, sessionsCount: 8, phase: "coding" }),
+      JSON.stringify([]),
+      "progress_update", "正在实现代码审查模块的核心逻辑...", t,
+      1, t, t, t,
+    ],
+  );
+  const projAliceId = uid();
+  run(
+    `INSERT OR IGNORE INTO race_projections (id, race_project_id, race_id, registration_id, user_id, metrics, risks, latest_event_type, latest_event_summary, latest_event_at, leaderboard_rank, last_updated_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      projAliceId, rpAliceId, race1Id, regAliceRace1, riderAliceId,
+      JSON.stringify({ tokensUsed: 32100, progressPercent: 55, sessionsCount: 6, phase: "debugging" }),
+      JSON.stringify(["任务阻塞"]),
+      "blocked", "遇到数据渲染性能问题，正在优化查询逻辑...", t,
+      2, t, t, t,
+    ],
+  );
+
   // Award for race3
   const awardId = uid();
   run(

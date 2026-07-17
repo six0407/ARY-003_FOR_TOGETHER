@@ -773,48 +773,31 @@ app.get("/api/live-hall/:raceId", (req, res) => {
     [race.id],
   );
 
+  // Get rider names for projections
+  const rpIds = projections.map(p => p.race_project_id);
+  const riderNames = rpIds.length > 0
+    ? all(`SELECT rp.id as rp_id, u.display_name, u.slug FROM race_projects rp JOIN users u ON rp.user_id = u.id WHERE rp.id IN (${rpIds.map(() => '?').join(',')})`, rpIds)
+    : [];
+
   // Get CA connection statuses
   const raceProjectIds = projections.map(p => p.race_project_id);
   const connStatuses = raceProjectIds.length > 0
     ? all(`SELECT race_project_id, ingestion_status, authenticity_status FROM ca_connections WHERE race_project_id IN (${raceProjectIds.map(() => '?').join(',')})`, raceProjectIds)
     : [];
 
-  // Include registered riders even without projections (so Live Hall always shows participants)
-  const registrations = all(
-    "SELECT r.*, u.display_name as rider_name, u.slug as rider_slug FROM registrations r JOIN users u ON r.user_id = u.id WHERE r.race_id = ? AND r.status = 'approved'",
-    [race.id],
-  );
-  const rps = all("SELECT * FROM race_projects WHERE race_id = ?", [race.id]);
-
-  const allRiders = registrations.map(reg => {
-    const rp = rps.find(r => r.registration_id === reg.id);
-    const existingProj = projections.find(p => p.race_project_id === rp?.id);
-    if (existingProj) return null; // Already in projections list
-    return {
-      race_project_id: rp?.id || null,
-      registration_id: reg.id,
-      rider_name: reg.rider_name,
-      rider_slug: reg.rider_slug,
-      user_id: reg.user_id,
-      status: "registered",
-      metrics: {},
-      risks: [],
-      leaderboard_rank: projections.length + (registrations.indexOf(reg) + 1),
-      connection: rp ? { ingestion_status: rp.aggregate_ingestion_status, authenticity_status: "pending" } : {},
-    };
-  }).filter(Boolean);
-
   ok(res, {
     race: { id: race.id, title: race.title, slug: race.slug, status: race.status },
-    projections: [
-      ...projections.map(p => ({
+    projections: projections.map(p => {
+      const rider = riderNames.find(r => r.rp_id === p.race_project_id);
+      return {
         ...p,
+        rider_name: rider?.display_name || "未知骑手",
+        rider_slug: rider?.slug || "",
         metrics: JSON.parse(p.metrics || "{}"),
         risks: JSON.parse(p.risks || "[]"),
         connection: connStatuses.find(c => c.race_project_id === p.race_project_id) || {},
-      })),
-      ...allRiders,
-    ],
+      };
+    }),
     recentEvents: recentEvents.map(e => ({
       ...e,
       rider_name: e.rider_name || "未知",
